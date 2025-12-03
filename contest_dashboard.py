@@ -1,19 +1,19 @@
-# contest_dashboard_gsheets.py
+# contest_dashboard.py
 import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 import plotly.express as px
-import plotly.graph_objects as go  # Fixed typo: "group.objects" to "graph_objects"
-from io import BytesIO  # Fixed typo: "id" to "io"
+import plotly.graph_objects as go
+from io import BytesIO
 import warnings
-warnings.filterwarnings('ignore')  # Fixed typo: "warning" to "warnings"
+warnings.filterwarnings('ignore')
 
 # Page configuration
 st.set_page_config(
-    page_title="Contest & Winner Dashboard",  # Fixed typo: "Minner" to "Winner"
-    page_icon="🏆",  # Fixed: Use trophy emoji
+    page_title="Contest & Winner Dashboard",
+    page_icon="🏆",
     layout="wide"
 )
 
@@ -87,21 +87,18 @@ class GoogleSheetsHandler:
     def connect(self):
         """Connect to Google Sheets using credentials"""
         try:
-            # For Streamlit Cloud, use secrets
-            if 'GOOGLE_CREDENTIALS' in st.secrets:
-                creds_dict = dict(st.secrets['GOOGLE_CREDENTIALS'])
-                creds = Credentials.from_service_account_info(creds_dict, scopes=self.scope)
-            else:
-                # For local development - load from json file
-                import json
-                with open('google_credentials.json') as f:
-                    creds_dict = json.load(f)
-                creds = Credentials.from_service_account_info(creds_dict, scopes=self.scope)
+            # Load credentials from file
+            creds = Credentials.from_service_account_file(
+                "google_credentials.json", 
+                scopes=self.scope
+            )
             
             client = gspread.authorize(creds)
-            return client.open_by_key(self.sheet_id)
+            spreadsheet = client.open_by_key(self.sheet_id)
+            return spreadsheet
         except Exception as e:
             st.error(f"Error connecting to Google Sheets: {e}")
+            st.info("Make sure 'google_credentials.json' is in the same folder and Google Sheet is shared with the service account.")
             return None
     
     def get_sheet_data(self, sheet_name):
@@ -111,7 +108,8 @@ class GoogleSheetsHandler:
             if spreadsheet:
                 sheet = spreadsheet.worksheet(sheet_name)
                 data = sheet.get_all_records()
-                return pd.DataFrame(data)
+                df = pd.DataFrame(data)
+                return df
             return pd.DataFrame()
         except Exception as e:
             st.error(f"Error getting data from {sheet_name}: {e}")
@@ -136,56 +134,58 @@ class ContestDashboard:
     
     def clean_data(self):
         """Clean and prepare the data"""
-        # Convert date columns to datetime
-        date_columns_contest = ['Start Date', 'End Date', 'Winner Announcement Date']
-        date_columns_winner = ['Start Date', 'End Date', 'Winner Announcement Date', 'Gift Sent Date', 
-                              'Old Lucky winner - Date']
-        
-        for col in date_columns_contest:
-            if col in self.contest_df.columns:
-                self.contest_df[col] = pd.to_datetime(self.contest_df[col], errors='coerce', dayfirst=True)
-        
-        for col in date_columns_winner:
-            if col in self.winner_df.columns:
-                self.winner_df[col] = pd.to_datetime(self.winner_df[col], errors='coerce', dayfirst=True)
-        
-        # Add duration column to contest
-        if 'Start Date' in self.contest_df.columns and 'End Date' in self.contest_df.columns:
-            self.contest_df['Duration (days)'] = (self.contest_df['End Date'] - self.contest_df['Start Date']).dt.days + 1
-        
-        # Clean businessid column
-        if 'businessid' in self.winner_df.columns:
-            self.winner_df['businessid'] = self.winner_df['businessid'].astype(str).str.strip()
+        try:
+            # Convert date columns to datetime for Contest Details
+            if not self.contest_df.empty:
+                date_columns_contest = ['Start Date', 'End Date', 'Winner Announcement Date']
+                for col in date_columns_contest:
+                    if col in self.contest_df.columns:
+                        self.contest_df[col] = pd.to_datetime(self.contest_df[col], errors='coerce', dayfirst=True)
+                
+                # Add duration column
+                if 'Start Date' in self.contest_df.columns and 'End Date' in self.contest_df.columns:
+                    self.contest_df['Duration (days)'] = (self.contest_df['End Date'] - self.contest_df['Start Date']).dt.days + 1
+            
+            # Convert date columns for Winner Details
+            if not self.winner_df.empty:
+                date_columns_winner = ['Start Date', 'End Date', 'Winner Announcement Date', 'Gift Sent Date']
+                for col in date_columns_winner:
+                    if col in self.winner_df.columns:
+                        self.winner_df[col] = pd.to_datetime(self.winner_df[col], errors='coerce', dayfirst=True)
+                
+                # Clean businessid column
+                if 'businessid' in self.winner_df.columns:
+                    self.winner_df['businessid'] = self.winner_df['businessid'].astype(str).str.strip()
+        except Exception as e:
+            st.warning(f"Some data cleaning issues: {e}")
     
     def get_running_contests(self, start_date, end_date):
         """Get contests running in selected date range"""
-        if self.contest_df.empty:
+        if self.contest_df.empty or 'Start Date' not in self.contest_df.columns or 'End Date' not in self.contest_df.columns:
             return pd.DataFrame()
         
-        mask = (
-            (self.contest_df['Start Date'] <= pd.Timestamp(end_date)) & 
-            (self.contest_df['End Date'] >= pd.Timestamp(start_date))
-        )
-        return self.contest_df[mask].sort_values('Start Date')
+        try:
+            mask = (
+                (self.contest_df['Start Date'] <= pd.Timestamp(end_date)) & 
+                (self.contest_df['End Date'] >= pd.Timestamp(start_date))
+            )
+            return self.contest_df[mask].sort_values('Start Date')
+        except:
+            return pd.DataFrame()
     
     def get_business_history(self, business_id):
         """Get contest history for a specific business ID"""
-        if self.winner_df.empty:
+        if self.winner_df.empty or 'businessid' not in self.winner_df.columns:
             return pd.DataFrame()
         
-        mask = self.winner_df['businessid'].astype(str).str.contains(business_id, na=False)
-        return self.winner_df[mask].sort_values('Winner Announcement Date', ascending=False)
-    
-    def get_monthly_summary(self, year, month):
-        """Get monthly contest summary"""
-        if self.contest_df.empty:
+        try:
+            mask = self.winner_df['businessid'].astype(str).str.contains(str(business_id), na=False)
+            results = self.winner_df[mask]
+            if 'Winner Announcement Date' in results.columns:
+                return results.sort_values('Winner Announcement Date', ascending=False)
+            return results
+        except:
             return pd.DataFrame()
-        
-        mask = (
-            (self.contest_df['Start Date'].dt.year == year) & 
-            (self.contest_df['Start Date'].dt.month == month)
-        )
-        return self.contest_df[mask]
     
     def create_dashboard(self):
         """Main dashboard function"""
@@ -197,12 +197,14 @@ class ContestDashboard:
         # Data Status
         col1, col2 = st.columns(2)
         with col1:
-            st.metric("Contest Records", len(self.contest_df))
+            contest_count = len(self.contest_df) if not self.contest_df.empty else 0
+            st.metric("Contest Records", contest_count)
         with col2:
-            st.metric("Winner Records", len(self.winner_df))
+            winner_count = len(self.winner_df) if not self.winner_df.empty else 0
+            st.metric("Winner Records", winner_count)
         
         if self.contest_df.empty or self.winner_df.empty:
-            st.warning("⚠️ Some data may not have loaded properly. Check Google Sheets connection.")
+            st.warning("⚠️ Some data may not have loaded properly. Click Refresh button.")
         
         # Sidebar
         with st.sidebar:
@@ -213,8 +215,7 @@ class ContestDashboard:
                  "📅 Contest Calendar", 
                  "🏆 Winner Lookup",
                  "📈 Analytics",
-                 "🔍 Advanced Search",
-                 "⚙️ Data Management"]
+                 "🔍 Advanced Search"]
             )
             
             st.markdown("---")
@@ -245,13 +246,13 @@ class ContestDashboard:
             st.markdown("---")
             st.markdown("### 🔧 Tools")
             
-            if st.button("🔄 Refresh Data from Sheets"):
+            if st.button("🔄 Refresh Data"):
                 self.load_data()
                 st.success("Data refreshed!")
                 st.rerun()
             
-            if st.button("📥 Export Current View"):
-                self.export_current_view(app_mode)
+            if st.button("📊 Show Raw Data"):
+                st.session_state.show_raw_data = True
             
             st.markdown("---")
             st.markdown("### 📊 Quick Stats")
@@ -261,6 +262,26 @@ class ContestDashboard:
             if not self.winner_df.empty and 'businessid' in self.winner_df.columns:
                 unique_businesses = self.winner_df['businessid'].nunique()
                 st.metric("Unique Winners", unique_businesses)
+        
+        # Check if we should show raw data
+        if hasattr(st.session_state, 'show_raw_data') and st.session_state.show_raw_data:
+            st.subheader("📋 Raw Data Preview")
+            tab1, tab2 = st.tabs(["Contest Data", "Winner Data"])
+            with tab1:
+                if not self.contest_df.empty:
+                    st.dataframe(self.contest_df)
+                else:
+                    st.info("No contest data available")
+            with tab2:
+                if not self.winner_df.empty:
+                    st.dataframe(self.winner_df)
+                else:
+                    st.info("No winner data available")
+            
+            if st.button("Hide Raw Data"):
+                st.session_state.show_raw_data = False
+                st.rerun()
+            return
         
         # Main content based on selection
         if app_mode == "📊 Dashboard Overview":
@@ -273,8 +294,6 @@ class ContestDashboard:
             self.show_analytics()
         elif app_mode == "🔍 Advanced Search":
             self.show_advanced_search()
-        elif app_mode == "⚙️ Data Management":
-            self.show_data_management()
     
     def show_dashboard_overview(self, start_date, end_date):
         """Show dashboard overview"""
@@ -290,7 +309,7 @@ class ContestDashboard:
         
         with col2:
             st.markdown('<div class="stat-card">', unsafe_allow_html=True)
-            if not self.contest_df.empty:
+            if not self.contest_df.empty and 'Start Date' in self.contest_df.columns:
                 upcoming = len(self.contest_df[self.contest_df['Start Date'] > pd.Timestamp(end_date)])
                 st.metric("Upcoming", upcoming)
             st.markdown('</div>', unsafe_allow_html=True)
@@ -314,41 +333,17 @@ class ContestDashboard:
             # Filter to available columns
             available_cols = [col for col in display_cols if col in running_contests.columns]
             
-            st.dataframe(
-                running_contests[available_cols],
-                use_container_width=True,
-                column_config={
-                    "Start Date": st.column_config.DateColumn("Start Date"),
-                    "End Date": st.column_config.DateColumn("End Date"),
-                }
-            )
-            
-            # Detailed view
-            st.markdown("### 🔍 Contest Details")
-            selected_contest = st.selectbox(
-                "Select contest for details:",
-                running_contests['Camp Name'].tolist()
-            )
-            
-            if selected_contest:
-                contest_details = running_contests[running_contests['Camp Name'] == selected_contest].iloc[0]
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown(f"""
-                    **Merch ID:** {contest_details.get('Merch ID', 'N/A')}  
-                    **Camp Type:** {contest_details.get('Camp Type', 'N/A')}  
-                    **KAM:** {contest_details.get('KAM', 'N/A')}  
-                    **Target Audience:** {contest_details.get('To Whom?', 'N/A')}
-                    """)
-                
-                with col2:
-                    st.markdown(f"""
-                    **Start Date:** {contest_details.get('Start Date', 'N/A')}  
-                    **End Date:** {contest_details.get('End Date', 'N/A')}  
-                    **Duration:** {contest_details.get('Duration (days)', 'N/A')} days  
-                    **Winner Announcement:** {contest_details.get('Winner Announcement Date', 'N/A')}
-                    """)
+            if 'Start Date' in available_cols and 'End Date' in available_cols:
+                st.dataframe(
+                    running_contests[available_cols],
+                    use_container_width=True,
+                    column_config={
+                        "Start Date": st.column_config.DateColumn("Start Date"),
+                        "End Date": st.column_config.DateColumn("End Date"),
+                    }
+                )
+            else:
+                st.dataframe(running_contests[available_cols], use_container_width=True)
             
             # Download button
             csv = running_contests.to_csv(index=False)
@@ -368,11 +363,12 @@ class ContestDashboard:
                           'Contest', 'Gift', 'Winner Announcement Date']
             available_recent_cols = [col for col in recent_cols if col in self.winner_df.columns]
             
-            recent_winners = self.winner_df.sort_values('Winner Announcement Date', ascending=False).head(10)
-            st.dataframe(
-                recent_winners[available_recent_cols],
-                use_container_width=True
-            )
+            if available_recent_cols:
+                recent_winners = self.winner_df.sort_values('Winner Announcement Date', ascending=False).head(10)
+                st.dataframe(
+                    recent_winners[available_recent_cols],
+                    use_container_width=True
+                )
     
     def show_contest_calendar(self, start_date, end_date):
         """Show contest calendar view"""
@@ -381,54 +377,61 @@ class ContestDashboard:
         # Filter contests
         contests_in_range = self.get_running_contests(start_date, end_date)
         
-        if not contests_in_range.empty:
-            # Gantt chart
-            fig = px.timeline(
-                contests_in_range,
-                x_start="Start Date",
-                x_end="End Date",
-                y="Camp Name",
-                color="Camp Type",
-                hover_name="Camp Name",
-                hover_data={
-                    "KAM": True,
-                    "To Whom?": True,
-                    "Duration (days)": True,
-                },
-                title="Contest Timeline"
-            )
-            fig.update_layout(
-                height=400,
-                xaxis_title="Date",
-                yaxis_title="Contest",
-                showlegend=True
-            )
-            st.plotly_chart(fig, use_container_width=True)
+        if not contests_in_range.empty and 'Start Date' in contests_in_range.columns and 'End Date' in contests_in_range.columns:
+            # Try to create Gantt chart if we have required columns
+            if 'Camp Name' in contests_in_range.columns and 'Camp Type' in contests_in_range.columns:
+                try:
+                    fig = px.timeline(
+                        contests_in_range,
+                        x_start="Start Date",
+                        x_end="End Date",
+                        y="Camp Name",
+                        color="Camp Type",
+                        hover_name="Camp Name",
+                        hover_data={
+                            "KAM": True,
+                            "To Whom?": True,
+                            "Duration (days)": True,
+                        },
+                        title="Contest Timeline"
+                    )
+                    fig.update_layout(
+                        height=400,
+                        xaxis_title="Date",
+                        yaxis_title="Contest",
+                        showlegend=True
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                except Exception as e:
+                    st.info("Could not create timeline chart. Showing table instead.")
             
             # Detailed table with filtering
-            st.markdown("### 📋 Filter and Explore")
+            st.markdown("### 📋 Contest Details")
             
             # Add filters
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                camp_types = ["All"] + sorted(contests_in_range['Camp Type'].unique().tolist())
-                selected_type = st.selectbox("Filter by Camp Type", camp_types)
+            filter_cols = st.columns(3)
+            with filter_cols[0]:
+                if 'Camp Type' in contests_in_range.columns:
+                    camp_types = ["All"] + sorted(contests_in_range['Camp Type'].dropna().unique().tolist())
+                    selected_type = st.selectbox("Filter by Camp Type", camp_types)
             
-            with col2:
-                kams = ["All"] + sorted(contests_in_range['KAM'].dropna().unique().tolist())
-                selected_kam = st.selectbox("Filter by KAM", kams)
+            with filter_cols[1]:
+                if 'KAM' in contests_in_range.columns:
+                    kams = ["All"] + sorted(contests_in_range['KAM'].dropna().unique().tolist())
+                    selected_kam = st.selectbox("Filter by KAM", kams)
             
-            with col3:
-                audiences = ["All"] + sorted(contests_in_range['To Whom?'].dropna().unique().tolist())
-                selected_audience = st.selectbox("Filter by Audience", audiences)
+            with filter_cols[2]:
+                if 'To Whom?' in contests_in_range.columns:
+                    audiences = ["All"] + sorted(contests_in_range['To Whom?'].dropna().unique().tolist())
+                    selected_audience = st.selectbox("Filter by Audience", audiences)
             
             # Apply filters
             filtered_df = contests_in_range.copy()
-            if selected_type != "All":
+            if 'selected_type' in locals() and selected_type != "All":
                 filtered_df = filtered_df[filtered_df['Camp Type'] == selected_type]
-            if selected_kam != "All":
+            if 'selected_kam' in locals() and selected_kam != "All":
                 filtered_df = filtered_df[filtered_df['KAM'] == selected_kam]
-            if selected_audience != "All":
+            if 'selected_audience' in locals() and selected_audience != "All":
                 filtered_df = filtered_df[filtered_df['To Whom?'] == selected_audience]
             
             st.dataframe(
@@ -456,8 +459,8 @@ class ContestDashboard:
         
         with col1:
             # Business ID search
-            business_id = st.text_input("Enter Business ID (BZID-XXXXXX or partial):", 
-                                       "BZID-1304470286")
+            business_id = st.text_input("Enter Business ID (e.g., BZID-1304470286):", 
+                                       "")
             
             search_button = st.button("🔍 Search", type="primary")
             
@@ -470,17 +473,30 @@ class ContestDashboard:
                         
                         # Display quick stats
                         total_wins = len(history)
-                        first_win = history['Winner Announcement Date'].min()
-                        last_win = history['Winner Announcement Date'].max()
+                        
+                        # Try to get first and last win dates
+                        first_win = "N/A"
+                        last_win = "N/A"
+                        if 'Winner Announcement Date' in history.columns:
+                            first_win_date = history['Winner Announcement Date'].min()
+                            last_win_date = history['Winner Announcement Date'].max()
+                            if pd.notna(first_win_date):
+                                first_win = first_win_date.strftime('%d-%b-%Y')
+                            if pd.notna(last_win_date):
+                                last_win = last_win_date.strftime('%d-%b-%Y')
+                        
+                        # Get customer and business names
+                        customer_name = history.iloc[0].get('customer_firstname', 'N/A') if len(history) > 0 else 'N/A'
+                        business_name = history.iloc[0].get('business_displayname', 'N/A') if len(history) > 0 else 'N/A'
                         
                         st.markdown(f"""
                         <div class="success-box">
                         <strong>📊 Business Summary:</strong><br>
                         • Total Wins: {total_wins}<br>
-                        • First Win: {first_win.strftime('%d-%b-%Y') if pd.notna(first_win) else 'N/A'}<br>
-                        • Last Win: {last_win.strftime('%d-%b-%Y') if pd.notna(last_win) else 'N/A'}<br>
-                        • Customer: {history.iloc[0].get('customer_firstname', 'N/A')}<br>
-                        • Business: {history.iloc[0].get('business_displayname', 'N/A')}
+                        • First Win: {first_win}<br>
+                        • Last Win: {last_win}<br>
+                        • Customer: {customer_name}<br>
+                        • Business: {business_name}
                         </div>
                         """, unsafe_allow_html=True)
                         
@@ -498,50 +514,38 @@ class ContestDashboard:
         with col2:
             if 'history' in locals() and not history.empty:
                 # Display history in a nice format
-                st.markdown(f"### 🏆 Winning History for {business_id}")
+                st.markdown(f"### 🏆 Winning History")
                 
                 # Summary metrics
-                summary_cols = st.columns(4)
+                summary_cols = st.columns(3)
                 with summary_cols[0]:
                     st.metric("Total Wins", len(history))
                 with summary_cols[1]:
-                    unique_contests = history['Contest'].nunique()
-                    st.metric("Unique Contests", unique_contests)
+                    if 'Contest' in history.columns:
+                        unique_contests = history['Contest'].nunique()
+                        st.metric("Unique Contests", unique_contests)
                 with summary_cols[2]:
-                    total_gifts = history['Gift'].nunique()
-                    st.metric("Different Gifts", total_gifts)
-                with summary_cols[3]:
-                    if 'Gift Sent Date' in history.columns:
-                        pending = history['Gift Sent Date'].isna().sum()
-                        st.metric("Pending Gifts", pending)
+                    if 'Gift' in history.columns:
+                        total_gifts = history['Gift'].nunique()
+                        st.metric("Different Gifts", total_gifts)
                 
                 # Display history table
                 display_cols = ['Winner Announcement Date', 'Contest', 'Gift', 
                               'Camp Description', 'Gift Sent Date', 'Owner']
                 available_display_cols = [col for col in display_cols if col in history.columns]
                 
-                st.dataframe(
-                    history[available_display_cols],
-                    use_container_width=True,
-                    column_config={
-                        "Winner Announcement Date": st.column_config.DateColumn("Announcement Date"),
-                        "Gift Sent Date": st.column_config.DateColumn("Gift Sent Date"),
-                    }
-                )
-                
-                # Visualization
-                if len(history) > 1:
-                    history['YearMonth'] = history['Winner Announcement Date'].dt.strftime('%Y-%m')
-                    monthly_wins = history.groupby('YearMonth').size().reset_index(name='Wins')
+                if available_display_cols:
+                    column_config = {}
+                    if 'Winner Announcement Date' in available_display_cols:
+                        column_config['Winner Announcement Date'] = st.column_config.DateColumn("Announcement Date")
+                    if 'Gift Sent Date' in available_display_cols:
+                        column_config['Gift Sent Date'] = st.column_config.DateColumn("Gift Sent Date")
                     
-                    fig = px.bar(
-                        monthly_wins,
-                        x='YearMonth',
-                        y='Wins',
-                        title='Wins Timeline',
-                        labels={'YearMonth': 'Month', 'Wins': 'Number of Wins'}
+                    st.dataframe(
+                        history[available_display_cols],
+                        use_container_width=True,
+                        column_config=column_config if column_config else None
                     )
-                    st.plotly_chart(fig, use_container_width=True)
     
     def show_analytics(self):
         """Show analytics dashboard"""
@@ -555,8 +559,9 @@ class ContestDashboard:
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            contest_types = self.contest_df['Camp Type'].nunique()
-            st.metric("Contest Types", contest_types)
+            if 'Camp Type' in self.contest_df.columns:
+                contest_types = self.contest_df['Camp Type'].nunique()
+                st.metric("Contest Types", contest_types)
         
         with col2:
             if 'Duration (days)' in self.contest_df.columns:
@@ -564,43 +569,46 @@ class ContestDashboard:
                 st.metric("Avg Duration", f"{avg_duration:.1f} days")
         
         with col3:
-            kam_count = self.contest_df['KAM'].nunique()
-            st.metric("KAMs Involved", kam_count)
+            if 'KAM' in self.contest_df.columns:
+                kam_count = self.contest_df['KAM'].nunique()
+                st.metric("KAMs Involved", kam_count)
         
         with col4:
-            audience_count = self.contest_df['To Whom?'].nunique()
-            st.metric("Audience Types", audience_count)
+            if 'To Whom?' in self.contest_df.columns:
+                audience_count = self.contest_df['To Whom?'].nunique()
+                st.metric("Audience Types", audience_count)
         
-        # Visualizations
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Contest type distribution
-            if 'Camp Type' in self.contest_df.columns:
+        # Visualizations - only if we have data
+        if 'Camp Type' in self.contest_df.columns and not self.contest_df['Camp Type'].empty:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Contest type distribution
                 type_dist = self.contest_df['Camp Type'].value_counts()
-                fig1 = px.pie(
-                    values=type_dist.values,
-                    names=type_dist.index,
-                    title="Contest Type Distribution",
-                    hole=0.3
-                )
-                st.plotly_chart(fig1, use_container_width=True)
-        
-        with col2:
-            # Monthly trend
-            if 'Start Date' in self.contest_df.columns:
-                self.contest_df['Month'] = self.contest_df['Start Date'].dt.to_period('M').astype(str)
-                monthly = self.contest_df.groupby('Month').size().reset_index(name='Count')
-                if not monthly.empty:
-                    fig2 = px.line(
-                        monthly,
-                        x='Month',
-                        y='Count',
-                        title="Monthly Contest Trend",
-                        markers=True
+                if not type_dist.empty:
+                    fig1 = px.pie(
+                        values=type_dist.values,
+                        names=type_dist.index,
+                        title="Contest Type Distribution",
+                        hole=0.3
                     )
-                    fig2.update_layout(xaxis_tickangle=-45)
-                    st.plotly_chart(fig2, use_container_width=True)
+                    st.plotly_chart(fig1, use_container_width=True)
+            
+            with col2:
+                # Monthly trend
+                if 'Start Date' in self.contest_df.columns:
+                    self.contest_df['Month'] = self.contest_df['Start Date'].dt.to_period('M').astype(str)
+                    monthly = self.contest_df.groupby('Month').size().reset_index(name='Count')
+                    if not monthly.empty:
+                        fig2 = px.line(
+                            monthly,
+                            x='Month',
+                            y='Count',
+                            title="Monthly Contest Trend",
+                            markers=True
+                        )
+                        fig2.update_layout(xaxis_tickangle=-45)
+                        st.plotly_chart(fig2, use_container_width=True)
         
         # KAM performance
         st.markdown("### 👥 KAM Performance")
@@ -619,27 +627,29 @@ class ContestDashboard:
         """Show advanced search options"""
         st.markdown("### 🔍 Advanced Search")
         
-        tab1, tab2, tab3 = st.tabs(["Search Contests", "Search Winners", "Cross Reference"])
+        tab1, tab2 = st.tabs(["Search Contests", "Search Winners"])
         
         with tab1:
             st.markdown("#### Search Contests")
             
             col1, col2 = st.columns(2)
             with col1:
-                search_term = st.text_input("Search in Camp Name/Description:")
+                search_term = st.text_input("Search in Camp Name/Type:", key="contest_search")
             with col2:
-                kam_filter = st.multiselect(
-                    "Filter by KAM:",
-                    options=self.contest_df['KAM'].unique().tolist() if 'KAM' in self.contest_df.columns else []
-                )
+                if not self.contest_df.empty and 'KAM' in self.contest_df.columns:
+                    kam_options = ["All"] + sorted(self.contest_df['KAM'].dropna().unique().tolist())
+                    kam_filter = st.selectbox("Filter by KAM:", kam_options, key="contest_kam")
             
-            # Search results
             if search_term:
                 mask = (
-                    self.contest_df['Camp Name'].str.contains(search_term, case=False, na=False) |
-                    self.contest_df['Camp Type'].str.contains(search_term, case=False, na=False)
+                    self.contest_df['Camp Name'].astype(str).str.contains(search_term, case=False, na=False) |
+                    self.contest_df['Camp Type'].astype(str).str.contains(search_term, case=False, na=False)
                 )
                 results = self.contest_df[mask]
+                
+                # Apply KAM filter
+                if 'kam_filter' in locals() and kam_filter != "All":
+                    results = results[results['KAM'] == kam_filter]
                 
                 if not results.empty:
                     st.success(f"Found {len(results)} contests")
@@ -652,26 +662,26 @@ class ContestDashboard:
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                winner_search = st.text_input("Search by Customer Name:")
+                winner_search = st.text_input("Search by Customer Name:", key="winner_name")
             with col2:
-                gift_search = st.text_input("Search by Gift:")
+                gift_search = st.text_input("Search by Gift:", key="gift_search")
             with col3:
-                contest_search = st.text_input("Search by Contest:")
+                contest_search = st.text_input("Search by Contest:", key="winner_contest")
             
             if winner_search or gift_search or contest_search:
                 mask = pd.Series(False, index=self.winner_df.index)
                 
                 if winner_search:
-                    mask = mask | (
-                        self.winner_df['customer_firstname'].str.contains(winner_search, case=False, na=False) |
-                        self.winner_df['business_displayname'].str.contains(winner_search, case=False, na=False)
-                    )
+                    if 'customer_firstname' in self.winner_df.columns:
+                        mask = mask | self.winner_df['customer_firstname'].astype(str).str.contains(winner_search, case=False, na=False)
+                    if 'business_displayname' in self.winner_df.columns:
+                        mask = mask | self.winner_df['business_displayname'].astype(str).str.contains(winner_search, case=False, na=False)
                 
-                if gift_search:
-                    mask = mask | self.winner_df['Gift'].str.contains(gift_search, case=False, na=False)
+                if gift_search and 'Gift' in self.winner_df.columns:
+                    mask = mask | self.winner_df['Gift'].astype(str).str.contains(gift_search, case=False, na=False)
                 
-                if contest_search:
-                    mask = mask | self.winner_df['Contest'].str.contains(contest_search, case=False, na=False)
+                if contest_search and 'Contest' in self.winner_df.columns:
+                    mask = mask | self.winner_df['Contest'].astype(str).str.contains(contest_search, case=False, na=False)
                 
                 results = self.winner_df[mask]
                 
@@ -680,101 +690,9 @@ class ContestDashboard:
                     st.dataframe(results, use_container_width=True)
                 else:
                     st.info("No winner records found")
-        
-        with tab3:
-            st.markdown("#### Cross Reference")
-            st.info("Compare contest data with winner data")
-            
-            # Show contests with winners
-            if not self.contest_df.empty and not self.winner_df.empty:
-                contests_with_winners = self.contest_df[
-                    self.contest_df['Merch ID'].isin(self.winner_df['Merch ID'])
-                ]
-                
-                st.metric("Contests with Winners", len(contests_with_winners))
-                
-                if len(contests_with_winners) > 0:
-                    st.dataframe(
-                        contests_with_winners[['Merch ID', 'Camp Name', 'Start Date', 'End Date']],
-                        use_container_width=True
-                    )
-    
-    def show_data_management(self):
-        """Show data upload/management section"""
-        st.markdown("### ⚙️ Data Management")
-        
-        tab1, tab2 = st.tabs(["📊 Data Preview", "🔍 Data Quality"])
-        
-        with tab1:
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("#### Contest Data Preview")
-                if not self.contest_df.empty:
-                    st.dataframe(self.contest_df.head(), use_container_width=True)
-                    st.caption(f"Total rows: {len(self.contest_df)}")
-                else:
-                    st.warning("No contest data loaded")
-            
-            with col2:
-                st.markdown("#### Winner Data Preview")
-                if not self.winner_df.empty:
-                    st.dataframe(self.winner_df.head(), use_container_width=True)
-                    st.caption(f"Total rows: {len(self.winner_df)}")
-                else:
-                    st.warning("No winner data loaded")
-        
-        with tab2:
-            st.markdown("#### Data Quality Check")
-            
-            if st.button("Run Quality Checks"):
-                with st.spinner("Analyzing data quality..."):
-                    issues = []
-                    
-                    # Check contest data
-                    if not self.contest_df.empty:
-                        # Missing dates
-                        missing_dates = self.contest_df[
-                            self.contest_df['Start Date'].isna() | 
-                            self.contest_df['End Date'].isna()
-                        ]
-                        if len(missing_dates) > 0:
-                            issues.append(f"❌ {len(missing_dates)} contests with missing dates")
-                        
-                        # Invalid date ranges
-                        invalid_dates = self.contest_df[
-                            self.contest_df['Start Date'] > self.contest_df['End Date']
-                        ]
-                        if len(invalid_dates) > 0:
-                            issues.append(f"❌ {len(invalid_dates)} contests with invalid date range")
-                    
-                    # Check winner data
-                    if not self.winner_df.empty:
-                        # Missing business IDs
-                        if 'businessid' in self.winner_df.columns:
-                            missing_bzid = self.winner_df[self.winner_df['businessid'].isna()]
-                            if len(missing_bzid) > 0:
-                                issues.append(f"❌ {len(missing_bzid)} winners with missing Business ID")
-                        
-                        # Missing gift sent dates
-                        if 'Gift Sent Date' in self.winner_df.columns:
-                            pending_gifts = self.winner_df[self.winner_df['Gift Sent Date'].isna()]
-                            if len(pending_gifts) > 0:
-                                issues.append(f"⚠️ {len(pending_gifts)} gifts not yet sent")
-                    
-                    if issues:
-                        st.warning("### Issues Found")
-                        for issue in issues:
-                            st.write(issue)
-                    else:
-                        st.success("✅ All data quality checks passed!")
-    
-    def export_current_view(self, view_name):
-        """Export current view data"""
-        st.info(f"Exporting {view_name}...")
-        # Implementation would depend on what data to export
 
 def main():
+    # Initialize dashboard
     dashboard = ContestDashboard()
     dashboard.create_dashboard()
 
