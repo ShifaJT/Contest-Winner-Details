@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -103,7 +103,7 @@ if client:
                 st.info(f"No contests found for {today.strftime('%B %Y')}")
             
             # ============================================
-            # FILTER CONTESTS BY DATE
+            # FIXED FILTER CONTESTS BY DATE - NO ERRORS
             # ============================================
             st.markdown("---")
             st.header("🔍 Filter Contests")
@@ -113,9 +113,10 @@ if client:
             with col1:
                 # Year filter
                 years = sorted(contests['Year'].dropna().unique(), reverse=True)
+                years = [int(y) for y in years if pd.notna(y)]
                 selected_year = st.selectbox(
                     "Select Year",
-                    ["All Years"] + [int(y) for y in years if pd.notna(y)],
+                    ["All Years"] + years,
                     index=0
                 )
                 
@@ -147,21 +148,27 @@ if client:
                     max_value=max_date
                 )
             
-            # Apply filters
+            # Apply filters - FIXED CODE (NO DATETIME/DATE COMPARISON ERROR)
             filtered_contests = contests.copy()
             
-            # Year filter
+            # Year filter - FIXED
             if selected_year != "All Years":
                 filtered_contests = filtered_contests[filtered_contests['Year'] == selected_year]
             
-            # Month filter
+            # Month filter - FIXED
             if selected_month != "All Months":
-                filtered_contests = filtered_contests[filtered_contests['Month'] == selected_month]
+                month_num = months.index(selected_month)  # Get month number (January=1)
+                filtered_contests = filtered_contests[filtered_contests['Month_Num'] == month_num]
             
-            # Date range filter
+            # Date range filter - FIXED (no datetime/date comparison error)
+            # Convert start_date and end_date to datetime for proper comparison
+            start_datetime = pd.Timestamp(start_date)
+            end_datetime = pd.Timestamp(end_date)
+            
+            # Filter using datetime comparison
             filtered_contests = filtered_contests[
-                (filtered_contests['Start Date'].dt.date >= start_date) & 
-                (filtered_contests['End Date'].dt.date <= end_date)
+                (filtered_contests['Start Date'] >= start_datetime) & 
+                (filtered_contests['End Date'] <= end_datetime)
             ]
             
             # Display results
