@@ -34,7 +34,7 @@ def safe_to_datetime(series):
 
 # Function to create nice contest cards
 def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_date_col, 
-                       winner_date_col, kam_col, to_whom_col):
+                       winner_date_col, kam_col, to_whom_col, is_running=False):
     """Create a nice looking contest card"""
     camp_name = row[camp_name_col] if camp_name_col and camp_name_col in row and pd.notna(row[camp_name_col]) else 'N/A'
     camp_type = row[camp_type_col] if camp_type_col and camp_type_col in row and pd.notna(row[camp_type_col]) else 'N/A'
@@ -63,17 +63,39 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
     kam = row[kam_col] if kam_col and kam_col in row and pd.notna(row[kam_col]) else 'N/A'
     to_whom = row[to_whom_col] if to_whom_col and to_whom_col in row and pd.notna(row[to_whom_col]) else 'N/A'
     
+    # Calculate days left if contest is running
+    days_left = ""
+    if is_running and end_date_col and end_date_col in row and pd.notna(row[end_date_col]):
+        if hasattr(row[end_date_col], 'date'):
+            end_date_obj = row[end_date_col].date()
+            today = datetime.now().date()
+            days_left_int = (end_date_obj - today).days
+            if days_left_int >= 0:
+                days_left = f"<br><strong>⏳ Days Left:</strong> {days_left_int} days"
+    
+    # Different gradient for running contests
+    if is_running:
+        gradient = "linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%)"  # Green for running
+        badge = "🏃 RUNNING NOW"
+    else:
+        gradient = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"  # Purple for upcoming
+        badge = "📅 UPCOMING"
+    
     # Create card
     card_html = f"""
     <div style="
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: {gradient};
         border-radius: 10px;
         padding: 20px;
         margin: 10px 0;
         color: white;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        position: relative;
     ">
-        <h3 style="margin: 0 0 10px 0; color: white;">{camp_name}</h3>
+        <div style="position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 12px; font-size: 12px;">
+            {badge}
+        </div>
+        <h3 style="margin: 0 0 10px 0; color: white; padding-right: 80px;">{camp_name}</h3>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <div>
                 <strong>🎯 Type:</strong> {camp_type}<br>
@@ -84,6 +106,7 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
                 <strong>📅 Starts:</strong> {start_date}<br>
                 <strong>🏁 Ends:</strong> {end_date}<br>
                 <strong>🏆 Winner Date:</strong> {winner_date}
+                {days_left}
             </div>
         </div>
     </div>
@@ -189,77 +212,175 @@ if client:
             st.header("📊 Contest Dashboard")
             
             if not contests.empty and start_date_col and end_date_col:
+                # ============================================
+                # DASHBOARD STATS
+                # ============================================
+                st.subheader("📈 Quick Overview")
+                
+                # Calculate stats
+                total_contests = len(contests)
+                
                 # Current month contests
                 current_month_contests = contests[
                     (contests['Year'] == current_year) & 
                     (contests['Month_Num'] == current_month)
                 ]
                 
-                # ============================================
-                # CURRENT RUNNING CONTESTS
-                # ============================================
-                st.subheader("🏃 Currently Running Contests")
-                
-                current_running = contests[
+                # Running contests
+                running_contests = contests[
                     (contests[start_date_col].dt.date <= today) & 
                     (contests[end_date_col].dt.date >= today)
                 ]
                 
-                if not current_running.empty:
-                    # Show stats
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Active Contests", len(current_running))
-                    with col2:
-                        unique_types = current_running[camp_type_col].nunique() if camp_type_col else 0
-                        st.metric("Campaign Types", unique_types)
-                    with col3:
-                        unique_kams = current_running[kam_col].nunique() if kam_col else 0
-                        st.metric("Active KAMs", unique_kams)
-                    
-                    st.markdown("---")
-                    
-                    # Show contest cards
-                    for _, row in current_running.iterrows():
-                        card_html = create_contest_card(
-                            row, camp_name_col, camp_type_col, start_date_col, end_date_col,
-                            winner_date_col, kam_col, to_whom_col
-                        )
-                        st.markdown(card_html, unsafe_allow_html=True)
-                else:
-                    st.info("🎉 No contests running today! All caught up!")
-                
-                # ============================================
-                # UPCOMING CONTESTS
-                # ============================================
-                st.subheader("📅 Upcoming Contests (This Month)")
-                
+                # Upcoming contests (this month)
                 upcoming_this_month = contests[
                     (contests[start_date_col].dt.date > today) & 
                     (contests['Year'] == current_year) & 
                     (contests['Month_Num'] == current_month)
                 ]
                 
-                if not upcoming_this_month.empty:
-                    # Show stats
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("Upcoming", len(upcoming_this_month))
-                    with col2:
-                        days_to_next = (upcoming_this_month[start_date_col].min().date() - today).days
-                        st.metric("Days to Next", days_to_next if days_to_next > 0 else 0)
+                # Recently ended (last 7 days)
+                recently_ended = contests[
+                    (contests[end_date_col].dt.date < today) & 
+                    (contests[end_date_col].dt.date >= (today - timedelta(days=7)))
+                ]
+                
+                # Display stats in columns
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("Total Contests", total_contests)
+                
+                with col2:
+                    st.metric("Running Now", len(running_contests))
+                
+                with col3:
+                    st.metric("Upcoming This Month", len(upcoming_this_month))
+                
+                with col4:
+                    st.metric("Ended Last 7 Days", len(recently_ended))
+                
+                # ============================================
+                # ONGOING CONTESTS
+                # ============================================
+                if not running_contests.empty:
+                    st.subheader("🏃 Currently Running Contests")
+                    st.info(f"**Active now: {len(running_contests)} contest(s)**")
+                    
+                    # Show stats for running contests
+                    stats_col1, stats_col2, stats_col3 = st.columns(3)
+                    
+                    with stats_col1:
+                        if camp_type_col and camp_type_col in running_contests.columns:
+                            running_types = running_contests[camp_type_col].nunique()
+                            st.metric("Campaign Types", running_types)
+                    
+                    with stats_col2:
+                        if kam_col and kam_col in running_contests.columns:
+                            running_kams = running_contests[kam_col].nunique()
+                            st.metric("Active KAMs", running_kams)
+                    
+                    with stats_col3:
+                        # Calculate average days left
+                        if end_date_col and end_date_col in running_contests.columns:
+                            try:
+                                days_left_list = []
+                                for _, row in running_contests.iterrows():
+                                    if hasattr(row[end_date_col], 'date'):
+                                        end_date_obj = row[end_date_col].date()
+                                        days_left = (end_date_obj - today).days
+                                        if days_left >= 0:
+                                            days_left_list.append(days_left)
+                                
+                                if days_left_list:
+                                    avg_days_left = sum(days_left_list) // len(days_left_list)
+                                    st.metric("Avg Days Left", avg_days_left)
+                                else:
+                                    st.metric("Avg Days Left", "N/A")
+                            except:
+                                st.metric("Avg Days Left", "N/A")
                     
                     st.markdown("---")
                     
-                    # Show upcoming contests
-                    for _, row in upcoming_this_month.iterrows():
+                    # Show running contest cards
+                    for _, row in running_contests.iterrows():
                         card_html = create_contest_card(
                             row, camp_name_col, camp_type_col, start_date_col, end_date_col,
-                            winner_date_col, kam_col, to_whom_col
+                            winner_date_col, kam_col, to_whom_col, is_running=True
                         )
                         st.markdown(card_html, unsafe_allow_html=True)
                 else:
+                    st.subheader("🏃 Currently Running Contests")
+                    st.info("🎉 No contests running today! All caught up!")
+                
+                # ============================================
+                # UPCOMING CONTESTS
+                # ============================================
+                if not upcoming_this_month.empty:
+                    st.subheader("📅 Upcoming Contests (This Month)")
+                    st.info(f"**Scheduled: {len(upcoming_this_month)} contest(s) this month**")
+                    
+                    # Show stats for upcoming contests
+                    up_stats_col1, up_stats_col2 = st.columns(2)
+                    
+                    with up_stats_col1:
+                        # Days to next contest
+                        try:
+                            next_contest_date = upcoming_this_month[start_date_col].min().date()
+                            days_to_next = (next_contest_date - today).days
+                            st.metric("Days to Next Contest", days_to_next if days_to_next > 0 else 0)
+                        except:
+                            st.metric("Days to Next Contest", "N/A")
+                    
+                    with up_stats_col2:
+                        # Contest types in upcoming
+                        if camp_type_col and camp_type_col in upcoming_this_month.columns:
+                            upcoming_types = upcoming_this_month[camp_type_col].nunique()
+                            st.metric("Upcoming Types", upcoming_types)
+                    
+                    st.markdown("---")
+                    
+                    # Show upcoming contest cards
+                    for _, row in upcoming_this_month.iterrows():
+                        card_html = create_contest_card(
+                            row, camp_name_col, camp_type_col, start_date_col, end_date_col,
+                            winner_date_col, kam_col, to_whom_col, is_running=False
+                        )
+                        st.markdown(card_html, unsafe_allow_html=True)
+                else:
+                    st.subheader("📅 Upcoming Contests (This Month)")
                     st.info("📭 No upcoming contests this month")
+                
+                # ============================================
+                # RECENTLY ENDED CONTESTS
+                # ============================================
+                if not recently_ended.empty:
+                    st.subheader("✅ Recently Ended Contests (Last 7 Days)")
+                    
+                    # Show in a compact grid
+                    cols = st.columns(3)
+                    for idx, (_, row) in enumerate(recently_ended.head(9).iterrows()):  # Show max 9
+                        with cols[idx % 3]:
+                            camp_name = row[camp_name_col] if camp_name_col else 'N/A'
+                            camp_type = row[camp_type_col] if camp_type_col else 'N/A'
+                            end_date = row[end_date_col].strftime('%d %b') if hasattr(row[end_date_col], 'strftime') else 'N/A'
+                            
+                            st.markdown(f"""
+                            <div style="
+                                background: #f0f2f6;
+                                border-radius: 8px;
+                                padding: 15px;
+                                margin: 5px 0;
+                                border-left: 4px solid #764ba2;
+                            ">
+                                <strong>{camp_name}</strong><br>
+                                <small>Type: {camp_type}</small><br>
+                                <small>Ended: {end_date}</small>
+                            </div>
+                            """, unsafe_allow_html=True)
+                else:
+                    st.subheader("✅ Recently Ended Contests (Last 7 Days)")
+                    st.info("No contests ended in the last 7 days")
         
         # ============================================
         # FILTER CONTESTS SECTION
@@ -342,9 +463,6 @@ if client:
                 
                 # Date range filter
                 if start_date_col and end_date_col:
-                    start_datetime = pd.Timestamp(start_date)
-                    end_datetime = pd.Timestamp(end_date)
-                    
                     # Filter by date range
                     filtered_contests = filtered_contests[
                         (filtered_contests[start_date_col].dt.date >= start_date) & 
@@ -391,9 +509,20 @@ if client:
                     if view_mode == "Cards View":
                         st.markdown("---")
                         for _, row in filtered_contests.iterrows():
+                            # Check if contest is currently running
+                            is_running = False
+                            if start_date_col and end_date_col:
+                                try:
+                                    start_dt = row[start_date_col].date() if hasattr(row[start_date_col], 'date') else None
+                                    end_dt = row[end_date_col].date() if hasattr(row[end_date_col], 'date') else None
+                                    if start_dt and end_dt and start_dt <= today <= end_dt:
+                                        is_running = True
+                                except:
+                                    pass
+                            
                             card_html = create_contest_card(
                                 row, camp_name_col, camp_type_col, start_date_col, end_date_col,
-                                winner_date_col, kam_col, to_whom_col
+                                winner_date_col, kam_col, to_whom_col, is_running=is_running
                             )
                             st.markdown(card_html, unsafe_allow_html=True)
                     else:
