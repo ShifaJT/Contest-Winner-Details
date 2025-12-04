@@ -16,6 +16,14 @@ def connect_sheets():
         st.error(f"Error: {str(e)[:100]}")
         return None
 
+# Function to find column by possible names
+def find_column(df, possible_names):
+    """Find a column by possible names"""
+    for name in possible_names:
+        if name in df.columns:
+            return name
+    return None
+
 # App
 st.set_page_config(page_title="Contest Check", layout="wide")
 st.title("🎯 Contest Checker")
@@ -43,39 +51,34 @@ if client:
                 # Show columns for debugging
                 with st.expander("📋 See Contest Data Columns"):
                     st.write("Available columns:", list(contests.columns))
+                    st.write("First row sample:", contests.iloc[0].to_dict())
                 
                 # Fix dates - try to find date columns
                 for col in contests.columns:
                     if 'date' in col.lower() or 'Date' in col:
-                        contests[col] = pd.to_datetime(contests[col], errors='coerce', dayfirst=True)
+                        try:
+                            contests[col] = pd.to_datetime(contests[col], errors='coerce', dayfirst=True)
+                        except:
+                            continue
                 
-                # Find start and end date columns
-                start_date_col = None
-                end_date_col = None
-                
-                for col in contests.columns:
-                    col_lower = col.lower()
-                    if 'start' in col_lower:
-                        start_date_col = col
-                    elif 'end' in col_lower:
-                        end_date_col = col
-                
-                # If no specific date columns found, use first two date columns
-                date_columns = [col for col in contests.columns if 'date' in col.lower()]
-                if not start_date_col and date_columns:
-                    start_date_col = date_columns[0]
-                if not end_date_col and len(date_columns) > 1:
-                    end_date_col = date_columns[1]
+                # Find important columns
+                camp_name_col = find_column(contests, ['Camp Name', 'Campaign Name', 'Camp Description', 'Camp'])
+                camp_type_col = find_column(contests, ['Camp Type', 'Type', 'Category'])
+                start_date_col = find_column(contests, ['Start Date', 'StartDate', 'Start'])
+                end_date_col = find_column(contests, ['End Date', 'EndDate', 'End'])
+                winner_date_col = find_column(contests, ['Winner Announcement Date', 'Winner Date', 'Announcement Date'])
+                kam_col = find_column(contests, ['KAM', 'Owner', 'Manager', 'Responsible'])
+                to_whom_col = find_column(contests, ['To Whom?', 'To Whom', 'Assigned To', 'Team'])
                 
                 # Add year and month columns for filtering
-                if start_date_col and start_date_col in contests.columns:
+                if start_date_col:
                     contests['Start_Date'] = contests[start_date_col]
                     contests['Year'] = contests['Start_Date'].dt.year
                     contests['Month'] = contests['Start_Date'].dt.month_name()
                     contests['Month_Num'] = contests['Start_Date'].dt.month
                 
                 # ============================================
-                # CURRENT CONTESTS - QUICK VIEW
+                # CURRENT CONTESTS - QUICK VIEW WITH DETAILS
                 # ============================================
                 st.header("📢 Current Contests (Quick View)")
                 
@@ -93,7 +96,7 @@ if client:
                     st.info(f"**This month ({today.strftime('%B %Y')}): {len(current_month_contests)} contests**")
                     
                     # Show current running contests
-                    if start_date_col and end_date_col and start_date_col in contests.columns and end_date_col in contests.columns:
+                    if start_date_col and end_date_col:
                         current_running = contests[
                             (contests[start_date_col].dt.date <= today) & 
                             (contests[end_date_col].dt.date >= today)
@@ -101,39 +104,111 @@ if client:
                         
                         if not current_running.empty:
                             st.subheader("🏃 Running Now")
-                            for _, row in current_running.iterrows():
-                                # Try to find camp name
-                                camp_name = 'N/A'
-                                for name_col in ['Camp Name', 'Campaign Name', 'Camp Description', 'Camp']:
-                                    if name_col in row and pd.notna(row[name_col]):
-                                        camp_name = row[name_col]
-                                        break
+                            
+                            # Create display dataframe
+                            running_display_cols = []
+                            if camp_name_col: running_display_cols.append(camp_name_col)
+                            if camp_type_col: running_display_cols.append(camp_type_col)
+                            if start_date_col: running_display_cols.append(start_date_col)
+                            if end_date_col: running_display_cols.append(end_date_col)
+                            if winner_date_col: running_display_cols.append(winner_date_col)
+                            if kam_col: running_display_cols.append(kam_col)
+                            if to_whom_col: running_display_cols.append(to_whom_col)
+                            
+                            if running_display_cols:
+                                running_display = current_running[running_display_cols].copy()
                                 
-                                # Try to find camp type
-                                camp_type = 'N/A'
-                                for type_col in ['Camp Type', 'Type', 'Category']:
-                                    if type_col in row and pd.notna(row[type_col]):
-                                        camp_type = row[type_col]
-                                        break
+                                # Format dates
+                                for date_col in [start_date_col, end_date_col, winner_date_col]:
+                                    if date_col and date_col in running_display.columns:
+                                        running_display[date_col] = running_display[date_col].dt.strftime('%d-%m-%Y')
                                 
-                                # Try to find KAM
-                                kam = 'N/A'
-                                for kam_col in ['KAM', 'Owner', 'Manager']:
-                                    if kam_col in row and pd.notna(row[kam_col]):
-                                        kam = row[kam_col]
-                                        break
+                                # Rename columns for display
+                                rename_dict = {
+                                    camp_name_col: 'Camp Name',
+                                    camp_type_col: 'Camp Type',
+                                    start_date_col: 'Start Date',
+                                    end_date_col: 'End Date',
+                                    winner_date_col: 'Winner Announcement Date',
+                                    kam_col: 'KAM',
+                                    to_whom_col: 'To Whom?'
+                                }
+                                running_display = running_display.rename(columns={k: v for k, v in rename_dict.items() if k})
                                 
-                                end_date = row[end_date_col] if end_date_col in row else 'N/A'
+                                st.dataframe(running_display, use_container_width=True)
+                            else:
+                                # Show simple list if columns not found
+                                for _, row in current_running.iterrows():
+                                    camp_name = row[camp_name_col] if camp_name_col else 'N/A'
+                                    camp_type = row[camp_type_col] if camp_type_col else 'N/A'
+                                    start_date = row[start_date_col].strftime('%d-%m-%Y') if start_date_col and pd.notna(row.get(start_date_col)) else 'N/A'
+                                    end_date = row[end_date_col].strftime('%d-%m-%Y') if end_date_col and pd.notna(row.get(end_date_col)) else 'N/A'
+                                    
+                                    st.markdown(f"""
+                                    **{camp_name}**
+                                    - Type: {camp_type}
+                                    - Period: {start_date} to {end_date}
+                                    ---
+                                    """)
+                        else:
+                            st.info("No contests running today")
+                    
+                    # Upcoming this month
+                    upcoming_this_month = contests[
+                        (contests[start_date_col].dt.date > today) & 
+                        (contests['Year'] == current_year) & 
+                        (contests['Month_Num'] == current_month)
+                    ] if start_date_col else pd.DataFrame()
+                    
+                    if not upcoming_this_month.empty:
+                        st.subheader("📅 Upcoming This Month")
+                        
+                        # Create display dataframe for upcoming
+                        upcoming_display_cols = []
+                        if camp_name_col: upcoming_display_cols.append(camp_name_col)
+                        if camp_type_col: upcoming_display_cols.append(camp_type_col)
+                        if start_date_col: upcoming_display_cols.append(start_date_col)
+                        if end_date_col: upcoming_display_cols.append(end_date_col)
+                        if winner_date_col: upcoming_display_cols.append(winner_date_col)
+                        if kam_col: upcoming_display_cols.append(kam_col)
+                        if to_whom_col: upcoming_display_cols.append(to_whom_col)
+                        
+                        if upcoming_display_cols:
+                            upcoming_display = upcoming_this_month[upcoming_display_cols].copy()
+                            
+                            # Format dates
+                            for date_col in [start_date_col, end_date_col, winner_date_col]:
+                                if date_col and date_col in upcoming_display.columns:
+                                    upcoming_display[date_col] = upcoming_display[date_col].dt.strftime('%d-%m-%Y')
+                            
+                            # Rename columns for display
+                            rename_dict = {
+                                camp_name_col: 'Camp Name',
+                                camp_type_col: 'Camp Type',
+                                start_date_col: 'Start Date',
+                                end_date_col: 'End Date',
+                                winner_date_col: 'Winner Announcement Date',
+                                kam_col: 'KAM',
+                                to_whom_col: 'To Whom?'
+                            }
+                            upcoming_display = upcoming_display.rename(columns={k: v for k, v in rename_dict.items() if k})
+                            
+                            st.dataframe(upcoming_display, use_container_width=True)
+                        else:
+                            # Show simple list if columns not found
+                            for _, row in upcoming_this_month.iterrows():
+                                camp_name = row[camp_name_col] if camp_name_col else 'N/A'
+                                camp_type = row[camp_type_col] if camp_type_col else 'N/A'
+                                start_date = row[start_date_col].strftime('%d-%m-%Y') if start_date_col and pd.notna(row.get(start_date_col)) else 'N/A'
+                                end_date = row[end_date_col].strftime('%d-%m-%Y') if end_date_col and pd.notna(row.get(end_date_col)) else 'N/A'
                                 
                                 st.markdown(f"""
                                 **{camp_name}**
                                 - Type: {camp_type}
-                                - Ends: {end_date.strftime('%d %b') if hasattr(end_date, 'strftime') else end_date}
-                                - KAM: {kam}
+                                - Starts: {start_date}
+                                - Ends: {end_date}
                                 ---
                                 """)
-                        else:
-                            st.info("No contests running today")
                 else:
                     st.info(f"No contests found for {today.strftime('%B %Y')}")
                 
@@ -170,7 +245,7 @@ if client:
                     # Date range filter
                     st.subheader("Custom Date Range")
                     
-                    if start_date_col and start_date_col in contests.columns:
+                    if start_date_col:
                         min_date = contests[start_date_col].min().date()
                         max_date = contests[start_date_col].max().date()
                         
@@ -205,7 +280,7 @@ if client:
                     filtered_contests = filtered_contests[filtered_contests['Month_Num'] == month_num]
                 
                 # Date range filter
-                if start_date_col and end_date_col and start_date_col in filtered_contests.columns and end_date_col in filtered_contests.columns:
+                if start_date_col and end_date_col:
                     start_datetime = pd.Timestamp(start_date)
                     end_datetime = pd.Timestamp(end_date)
                     
@@ -223,26 +298,12 @@ if client:
                     with col1:
                         st.metric("Total", len(filtered_contests))
                     
-                    # Find camp type column
-                    camp_type_col = None
-                    for col in ['Camp Type', 'Type', 'Category']:
-                        if col in filtered_contests.columns:
-                            camp_type_col = col
-                            break
-                    
                     with col2:
                         if camp_type_col:
                             camp_types = filtered_contests[camp_type_col].nunique()
                             st.metric("Campaign Types", camp_types)
                         else:
                             st.metric("Campaign Types", "N/A")
-                    
-                    # Find KAM column
-                    kam_col = None
-                    for col in ['KAM', 'Owner', 'Manager']:
-                        if col in filtered_contests.columns:
-                            kam_col = col
-                            break
                     
                     with col3:
                         if kam_col:
@@ -251,43 +312,37 @@ if client:
                         else:
                             st.metric("KAMs", "N/A")
                     
-                    # Display table - find relevant columns
-                    possible_cols = []
+                    # Create display dataframe with all requested columns
+                    display_cols = []
                     
-                    # Try to find camp name column
-                    for name_col in ['Camp Name', 'Campaign Name', 'Camp Description', 'Camp']:
-                        if name_col in filtered_contests.columns:
-                            possible_cols.append(name_col)
-                            break
+                    # Add all requested columns if available
+                    if camp_name_col: display_cols.append(camp_name_col)
+                    if camp_type_col: display_cols.append(camp_type_col)
+                    if start_date_col: display_cols.append(start_date_col)
+                    if end_date_col: display_cols.append(end_date_col)
+                    if winner_date_col: display_cols.append(winner_date_col)
+                    if kam_col: display_cols.append(kam_col)
+                    if to_whom_col: display_cols.append(to_whom_col)
                     
-                    if camp_type_col:
-                        possible_cols.append(camp_type_col)
-                    
-                    if start_date_col:
-                        possible_cols.append(start_date_col)
-                    
-                    if end_date_col:
-                        possible_cols.append(end_date_col)
-                    
-                    if kam_col:
-                        possible_cols.append(kam_col)
-                    
-                    if possible_cols:
-                        display_df = filtered_contests[possible_cols].copy()
+                    if display_cols:
+                        display_df = filtered_contests[display_cols].copy()
                         
                         # Format dates
-                        if start_date_col in display_df.columns:
-                            display_df[start_date_col] = display_df[start_date_col].dt.strftime('%d-%m-%Y')
-                        if end_date_col in display_df.columns:
-                            display_df[end_date_col] = display_df[end_date_col].dt.strftime('%d-%m-%Y')
+                        for date_col in [start_date_col, end_date_col, winner_date_col]:
+                            if date_col and date_col in display_df.columns:
+                                display_df[date_col] = display_df[date_col].dt.strftime('%d-%m-%Y')
                         
                         # Rename columns for display
-                        column_names = {
+                        rename_dict = {
+                            camp_name_col: 'Camp Name',
+                            camp_type_col: 'Camp Type',
                             start_date_col: 'Start Date',
                             end_date_col: 'End Date',
-                            kam_col: 'KAM'
+                            winner_date_col: 'Winner Announcement Date',
+                            kam_col: 'KAM',
+                            to_whom_col: 'To Whom?'
                         }
-                        display_df = display_df.rename(columns=column_names)
+                        display_df = display_df.rename(columns={k: v for k, v in rename_dict.items() if k})
                         
                         st.dataframe(display_df, use_container_width=True, height=400)
                         
