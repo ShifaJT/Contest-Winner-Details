@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, date, timedelta
 import gspread
 from google.oauth2.service_account import Credentials
+import re
 
 # Simple connection
 def connect_sheets():
@@ -24,13 +25,116 @@ def find_column(df, possible_names):
             return name
     return None
 
-# Function to safely convert to datetime
-def safe_to_datetime(series):
-    """Safely convert series to datetime"""
-    try:
+# Function to detect date format
+def detect_date_format(date_str):
+    """Detect if date is DD-MM-YYYY or MM-DD-YYYY"""
+    if pd.isna(date_str) or not isinstance(date_str, str):
+        return None
+    
+    # Remove any time part
+    date_str = str(date_str).split()[0]
+    
+    # Check if it's already a datetime object
+    if isinstance(date_str, (datetime, pd.Timestamp)):
+        return "already_datetime"
+    
+    # Check common date patterns
+    dd_mm_yyyy_pattern = r'^\d{1,2}-\d{1,2}-\d{4}$'
+    mm_dd_yyyy_pattern = r'^\d{1,2}-\d{1,2}-\d{4}$'
+    dd_mm_yy_pattern = r'^\d{1,2}-\d{1,2}-\d{2}$'
+    
+    if re.match(dd_mm_yyyy_pattern, date_str) or re.match(dd_mm_yy_pattern, date_str):
+        # Try to parse as DD-MM-YYYY first
+        try:
+            parts = date_str.split('-')
+            if len(parts) == 3:
+                day = int(parts[0])
+                month = int(parts[1])
+                year = int(parts[2])
+                
+                # If year is 2 digits, convert to 4 digits
+                if year < 100:
+                    year = 2000 + year
+                
+                # Validate if it's a valid date in DD-MM format
+                if 1 <= month <= 12 and 1 <= day <= 31:
+                    # Check if day could be a month (ambiguous)
+                    if day <= 12 and month <= 12:
+                        # Ambiguous case (e.g., 04-05-2025 could be April 5 or May 4)
+                        return "ambiguous"
+                    elif day > 12:
+                        # Day > 12, so it must be DD-MM
+                        return "dd_mm_yyyy"
+                    else:
+                        # Day <= 12, month <= 12, need to decide
+                        # Look at other dates in the column to decide
+                        return "ambiguous"
+        except:
+            pass
+    
+    return None
+
+# Function to smart parse dates
+def smart_to_datetime(series, sample_size=20):
+    """Smart date parsing that detects format"""
+    if series.empty:
+        return pd.Series([pd.NaT] * len(series), index=series.index)
+    
+    result = pd.Series([pd.NaT] * len(series), index=series.index)
+    
+    # Take a sample to detect format
+    sample = series.dropna().head(sample_size)
+    if sample.empty:
+        # Try to parse everything
+        try:
+            return pd.to_datetime(series, errors='coerce', dayfirst=True)
+        except:
+            try:
+                return pd.to_datetime(series, errors='coerce', dayfirst=False)
+            except:
+                return result
+    
+    # Analyze sample dates
+    formats_found = []
+    for val in sample:
+        fmt = detect_date_format(val)
+        if fmt:
+            formats_found.append(fmt)
+    
+    # Count format occurrences
+    from collections import Counter
+    format_counts = Counter(formats_found)
+    
+    # Determine best format
+    best_format = None
+    if format_counts:
+        best_format = format_counts.most_common(1)[0][0]
+    
+    # Parse based on detected format
+    if best_format == "dd_mm_yyyy":
+        st.sidebar.info("📅 Detected date format: DD-MM-YYYY")
         return pd.to_datetime(series, errors='coerce', dayfirst=True)
-    except:
-        return pd.NaT
+    elif best_format == "already_datetime":
+        return series
+    else:
+        # Try both formats and see which gives more valid dates
+        try_dayfirst = pd.to_datetime(series, errors='coerce', dayfirst=True)
+        try_monthfirst = pd.to_datetime(series, errors='coerce', dayfirst=False)
+        
+        # Count valid dates for each
+        valid_dayfirst = try_dayfirst.notna().sum()
+        valid_monthfirst = try_monthfirst.notna().sum()
+        
+        if valid_dayfirst > valid_monthfirst:
+            st.sidebar.info("📅 Using DD-MM-YYYY format (more valid dates)")
+            return try_dayfirst
+        elif valid_monthfirst > valid_dayfirst:
+            st.sidebar.info("📅 Using MM-DD-YYYY format (more valid dates)")
+            return try_monthfirst
+        else:
+            # Equal valid dates, use dayfirst as default
+            st.sidebar.warning("⚠️ Ambiguous dates, using DD-MM-YYYY format")
+            return try_dayfirst
 
 # Function to create nice contest cards
 def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_date_col, 
@@ -177,29 +281,37 @@ if client:
             kam_col = find_column(contests, ['KAM', 'Owner', 'Manager', 'Responsible'])
             to_whom_col = find_column(contests, ['To Whom?', 'To Whom', 'Assigned To', 'Team'])
             
-            # Fix dates safely
+            # Smart date parsing with format detection
             if start_date_col:
-                contests[start_date_col] = safe_to_datetime(contests[start_date_col])
+                contests[start_date_col] = smart_to_datetime(contests[start_date_col])
                 contests['Start_Date'] = contests[start_date_col]
                 contests['Year'] = contests['Start_Date'].dt.year
                 contests['Month'] = contests['Start_Date'].dt.month_name()
                 contests['Month_Num'] = contests['Start_Date'].dt.month
             
             if end_date_col:
-                contests[end_date_col] = safe_to_datetime(contests[end_date_col])
+                contests[end_date_col] = smart_to_datetime(contests[end_date_col])
             
             if winner_date_col:
-                contests[winner_date_col] = safe_to_datetime(contests[winner_date_col])
+                contests[winner_date_col] = smart_to_datetime(contests[winner_date_col])
+            
+            # Show date parsing stats
+            if start_date_col:
+                valid_dates = contests[start_date_col].notna().sum()
+                total_dates = len(contests)
+                st.sidebar.info(f"📊 Dates parsed: {valid_dates}/{total_dates}")
         
-        # Process winner data
+        # Process winner data with smart date parsing
         if not winners.empty:
-            # Fix dates in winner data safely
+            # Smart date parsing for winners
             if 'Start Date' in winners.columns:
-                winners['Start Date'] = safe_to_datetime(winners['Start Date'])
+                winners['Start Date'] = smart_to_datetime(winners['Start Date'])
+            
             if 'End Date' in winners.columns:
-                winners['End Date'] = safe_to_datetime(winners['End Date'])
+                winners['End Date'] = smart_to_datetime(winners['End Date'])
+            
             if 'Winner Announcement Date' in winners.columns:
-                winners['Winner Announcement Date'] = safe_to_datetime(winners['Winner Announcement Date'])
+                winners['Winner Announcement Date'] = smart_to_datetime(winners['Winner Announcement Date'])
         
         today = datetime.now().date()
         current_month = today.month
