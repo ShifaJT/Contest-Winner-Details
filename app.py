@@ -218,7 +218,7 @@ if client:
                 st.info("No contests found for selected filters")
         
         # ============================================
-        # LOAD WINNER DATA
+        # LOAD WINNER DATA WITH CONTEST INFO
         # ============================================
         st.markdown("---")
         st.header("🏆 Check Winners")
@@ -266,17 +266,57 @@ if client:
                     if not results.empty:
                         st.success(f"✅ Found {len(results)} win(s)")
                         
+                        # Display each winner with contest details
                         for _, row in results.iterrows():
+                            # Get contest name from winner data
+                            contest_name = row.get('Contest', 'N/A')
+                            
+                            # Find matching contest in contest details
+                            contest_info = contests[
+                                contests['Camp Name'].str.contains(contest_name, case=False, na=False)
+                            ]
+                            
+                            # Prepare contest details
+                            if not contest_info.empty:
+                                contest_row = contest_info.iloc[0]
+                                camp_desc = contest_row.get('Camp Description', 'N/A')
+                                start_date = contest_row.get('Start Date', 'N/A')
+                                end_date = contest_row.get('End Date', 'N/A')
+                                
+                                # Format dates if they exist
+                                if pd.notna(start_date):
+                                    start_date_str = start_date.strftime('%d-%m-%Y')
+                                else:
+                                    start_date_str = 'N/A'
+                                    
+                                if pd.notna(end_date):
+                                    end_date_str = end_date.strftime('%d-%m-%Y')
+                                else:
+                                    end_date_str = 'N/A'
+                            else:
+                                camp_desc = 'Contest details not found'
+                                start_date_str = 'N/A'
+                                end_date_str = 'N/A'
+                            
+                            # Display winner card with contest info
                             st.markdown(f"""
                             **🎁 {row.get('Gift', 'N/A')}**
-                            - Contest: {row.get('Contest', 'N/A')}
-                            - Customer: {row.get('customer_firstname', 'N/A')}
-                            - Phone: {row.get('customer_phonenumber', 'N/A')}
-                            - Store: {row.get('business_displayname', 'N/A')}
+                            - **Contest:** {contest_name}
+                            - **Camp Description:** {camp_desc}
+                            - **Contest Duration:** {start_date_str} to {end_date_str}
+                            - **Customer:** {row.get('customer_firstname', 'N/A')}
+                            - **Phone:** {row.get('customer_phonenumber', 'N/A')}
+                            - **Store:** {row.get('business_displayname', 'N/A')}
+                            - **BZID:** {row.get('businessid', 'N/A')}
                             ---
                             """)
                     else:
                         st.warning("No wins found")
+                        
+                # If no search yet, show some stats
+                elif not search_input:
+                    st.info("Enter BZID, Phone, or Name to search for winners")
+                    
         else:
             st.warning("Winner sheet not found")
             
