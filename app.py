@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -24,12 +24,20 @@ def find_column(df, possible_names):
             return name
     return None
 
+# Function to safely convert to datetime
+def safe_to_datetime(series):
+    """Safely convert series to datetime"""
+    try:
+        return pd.to_datetime(series, errors='coerce', dayfirst=True)
+    except:
+        return pd.NaT
+
 # Function to create nice contest cards
 def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_date_col, 
                        winner_date_col, kam_col, to_whom_col):
     """Create a nice looking contest card"""
-    camp_name = row[camp_name_col] if camp_name_col and camp_name_col in row else 'N/A'
-    camp_type = row[camp_type_col] if camp_type_col and camp_type_col in row else 'N/A'
+    camp_name = row[camp_name_col] if camp_name_col and camp_name_col in row and pd.notna(row[camp_name_col]) else 'N/A'
+    camp_type = row[camp_type_col] if camp_type_col and camp_type_col in row and pd.notna(row[camp_type_col]) else 'N/A'
     
     start_date = 'N/A'
     if start_date_col and start_date_col in row and pd.notna(row[start_date_col]):
@@ -52,8 +60,8 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
         else:
             winner_date = str(row[winner_date_col])
     
-    kam = row[kam_col] if kam_col and kam_col in row else 'N/A'
-    to_whom = row[to_whom_col] if to_whom_col and to_whom_col in row else 'N/A'
+    kam = row[kam_col] if kam_col and kam_col in row and pd.notna(row[kam_col]) else 'N/A'
+    to_whom = row[to_whom_col] if to_whom_col and to_whom_col in row and pd.notna(row[to_whom_col]) else 'N/A'
     
     # Create card
     card_html = f"""
@@ -82,7 +90,7 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
     """
     return card_html
 
-# Initialize session state for section selection
+# Initialize session state
 if 'current_section' not in st.session_state:
     st.session_state.current_section = "🎯 Contest Dashboard"
 
@@ -106,14 +114,14 @@ if client:
         sheet = client.open_by_key("1E2qxc1kZttPQMmSXCVXFaQKVNLl_Nhe4uUPBrzf7B3U")
         
         # Load data once and cache it
-        @st.cache_data(ttl=300)  # Cache for 5 minutes
+        @st.cache_data(ttl=300)
         def load_contest_data():
             contest_ws = sheet.worksheet("Contest Details")
             contest_data = contest_ws.get_all_records()
             contests = pd.DataFrame(contest_data)
             return contests
         
-        @st.cache_data(ttl=300)  # Cache for 5 minutes
+        @st.cache_data(ttl=300)
         def load_winner_data():
             winner_sheet_names = ['Winners Details ', 'Winner Details', 'Winners Details', 'Winner Details ']
             for sheet_name in winner_sheet_names:
@@ -135,21 +143,8 @@ if client:
         if not winners.empty:
             st.sidebar.success(f"✅ {len(winners)} winners loaded")
         
-        # ============================================
-        # CONTEST DASHBOARD SECTION
-        # ============================================
-        if section == "🎯 Contest Dashboard":
-            st.header("📊 Contest Dashboard")
-            
-            # Process contest data
-            # Fix dates - try to find date columns
-            for col in contests.columns:
-                if 'date' in col.lower() or 'Date' in col:
-                    try:
-                        contests[col] = pd.to_datetime(contests[col], errors='coerce', dayfirst=True)
-                    except:
-                        continue
-            
+        # Process contest data
+        if not contests.empty:
             # Find important columns
             camp_name_col = find_column(contests, ['Camp Name', 'Campaign Name', 'Camp Description', 'Camp'])
             camp_type_col = find_column(contests, ['Camp Type', 'Type', 'Category'])
@@ -159,16 +154,41 @@ if client:
             kam_col = find_column(contests, ['KAM', 'Owner', 'Manager', 'Responsible'])
             to_whom_col = find_column(contests, ['To Whom?', 'To Whom', 'Assigned To', 'Team'])
             
-            today = datetime.now().date()
-            current_month = today.month
-            current_year = today.year
-            
+            # Fix dates safely
             if start_date_col:
+                contests[start_date_col] = safe_to_datetime(contests[start_date_col])
                 contests['Start_Date'] = contests[start_date_col]
                 contests['Year'] = contests['Start_Date'].dt.year
                 contests['Month'] = contests['Start_Date'].dt.month_name()
                 contests['Month_Num'] = contests['Start_Date'].dt.month
-                
+            
+            if end_date_col:
+                contests[end_date_col] = safe_to_datetime(contests[end_date_col])
+            
+            if winner_date_col:
+                contests[winner_date_col] = safe_to_datetime(contests[winner_date_col])
+        
+        # Process winner data
+        if not winners.empty:
+            # Fix dates in winner data safely
+            if 'Start Date' in winners.columns:
+                winners['Start Date'] = safe_to_datetime(winners['Start Date'])
+            if 'End Date' in winners.columns:
+                winners['End Date'] = safe_to_datetime(winners['End Date'])
+            if 'Winner Announcement Date' in winners.columns:
+                winners['Winner Announcement Date'] = safe_to_datetime(winners['Winner Announcement Date'])
+        
+        today = datetime.now().date()
+        current_month = today.month
+        current_year = today.year
+        
+        # ============================================
+        # CONTEST DASHBOARD SECTION
+        # ============================================
+        if section == "🎯 Contest Dashboard":
+            st.header("📊 Contest Dashboard")
+            
+            if not contests.empty and start_date_col and end_date_col:
                 # Current month contests
                 current_month_contests = contests[
                     (contests['Year'] == current_year) & 
@@ -180,103 +200,67 @@ if client:
                 # ============================================
                 st.subheader("🏃 Currently Running Contests")
                 
-                if start_date_col and end_date_col:
-                    current_running = contests[
-                        (contests[start_date_col].dt.date <= today) & 
-                        (contests[end_date_col].dt.date >= today)
-                    ]
+                current_running = contests[
+                    (contests[start_date_col].dt.date <= today) & 
+                    (contests[end_date_col].dt.date >= today)
+                ]
+                
+                if not current_running.empty:
+                    # Show stats
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Active Contests", len(current_running))
+                    with col2:
+                        unique_types = current_running[camp_type_col].nunique() if camp_type_col else 0
+                        st.metric("Campaign Types", unique_types)
+                    with col3:
+                        unique_kams = current_running[kam_col].nunique() if kam_col else 0
+                        st.metric("Active KAMs", unique_kams)
                     
-                    if not current_running.empty:
-                        # Show stats
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Active Contests", len(current_running))
-                        with col2:
-                            unique_types = current_running[camp_type_col].nunique() if camp_type_col else 0
-                            st.metric("Campaign Types", unique_types)
-                        with col3:
-                            unique_kams = current_running[kam_col].nunique() if kam_col else 0
-                            st.metric("Active KAMs", unique_kams)
-                        
-                        st.markdown("---")
-                        
-                        # Show contest cards
-                        for _, row in current_running.iterrows():
-                            card_html = create_contest_card(
-                                row, camp_name_col, camp_type_col, start_date_col, end_date_col,
-                                winner_date_col, kam_col, to_whom_col
-                            )
-                            st.markdown(card_html, unsafe_allow_html=True)
-                    else:
-                        st.info("🎉 No contests running today! All caught up!")
+                    st.markdown("---")
+                    
+                    # Show contest cards
+                    for _, row in current_running.iterrows():
+                        card_html = create_contest_card(
+                            row, camp_name_col, camp_type_col, start_date_col, end_date_col,
+                            winner_date_col, kam_col, to_whom_col
+                        )
+                        st.markdown(card_html, unsafe_allow_html=True)
+                else:
+                    st.info("🎉 No contests running today! All caught up!")
                 
                 # ============================================
                 # UPCOMING CONTESTS
                 # ============================================
                 st.subheader("📅 Upcoming Contests (This Month)")
                 
-                if start_date_col:
-                    upcoming_this_month = contests[
-                        (contests[start_date_col].dt.date > today) & 
-                        (contests['Year'] == current_year) & 
-                        (contests['Month_Num'] == current_month)
-                    ]
-                    
-                    if not upcoming_this_month.empty:
-                        # Show stats
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.metric("Upcoming", len(upcoming_this_month))
-                        with col2:
-                            days_to_next = (upcoming_this_month[start_date_col].min().date() - today).days
-                            st.metric("Days to Next", days_to_next if days_to_next > 0 else 0)
-                        
-                        st.markdown("---")
-                        
-                        # Show upcoming contests
-                        for _, row in upcoming_this_month.iterrows():
-                            card_html = create_contest_card(
-                                row, camp_name_col, camp_type_col, start_date_col, end_date_col,
-                                winner_date_col, kam_col, to_whom_col
-                            )
-                            st.markdown(card_html, unsafe_allow_html=True)
-                    else:
-                        st.info("📭 No upcoming contests this month")
+                upcoming_this_month = contests[
+                    (contests[start_date_col].dt.date > today) & 
+                    (contests['Year'] == current_year) & 
+                    (contests['Month_Num'] == current_month)
+                ]
                 
-                # ============================================
-                # RECENTLY ENDED CONTESTS
-                # ============================================
-                st.subheader("✅ Recently Ended Contests (Last 30 Days)")
-                
-                if end_date_col:
-                    recent_ended = contests[
-                        (contests[end_date_col].dt.date < today) & 
-                        (contests[end_date_col].dt.date >= (today - pd.Timedelta(days=30)))
-                    ]
+                if not upcoming_this_month.empty:
+                    # Show stats
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("Upcoming", len(upcoming_this_month))
+                    with col2:
+                        days_to_next = (upcoming_this_month[start_date_col].min().date() - today).days
+                        st.metric("Days to Next", days_to_next if days_to_next > 0 else 0)
                     
-                    if not recent_ended.empty:
-                        # Show in a more compact way
-                        cols = st.columns(3)
-                        for idx, (_, row) in enumerate(recent_ended.head(9).iterrows()):  # Show max 9
-                            with cols[idx % 3]:
-                                camp_name = row[camp_name_col] if camp_name_col else 'N/A'
-                                end_date = row[end_date_col].strftime('%d %b') if hasattr(row[end_date_col], 'strftime') else 'N/A'
-                                
-                                st.markdown(f"""
-                                <div style="
-                                    background: #f0f2f6;
-                                    border-radius: 8px;
-                                    padding: 15px;
-                                    margin: 5px 0;
-                                    border-left: 4px solid #764ba2;
-                                ">
-                                    <strong>{camp_name}</strong><br>
-                                    <small>Ended: {end_date}</small>
-                                </div>
-                                """, unsafe_allow_html=True)
-                    else:
-                        st.info("No contests ended in the last 30 days")
-            
+                    st.markdown("---")
+                    
+                    # Show upcoming contests
+                    for _, row in upcoming_this_month.iterrows():
+                        card_html = create_contest_card(
+                            row, camp_name_col, camp_type_col, start_date_col, end_date_col,
+                            winner_date_col, kam_col, to_whom_col
+                        )
+                        st.markdown(card_html, unsafe_allow_html=True)
+                else:
+                    st.info("📭 No upcoming contests this month")
+        
         # ============================================
         # FILTER CONTESTS SECTION
         # ============================================
@@ -284,36 +268,55 @@ if client:
             st.header("🔍 Filter Contests")
             
             if not contests.empty:
-                # Find important columns
-                camp_name_col = find_column(contests, ['Camp Name', 'Campaign Name', 'Camp Description', 'Camp'])
-                camp_type_col = find_column(contests, ['Camp Type', 'Type', 'Category'])
-                start_date_col = find_column(contests, ['Start Date', 'StartDate', 'Start'])
-                end_date_col = find_column(contests, ['End Date', 'EndDate', 'End'])
-                winner_date_col = find_column(contests, ['Winner Announcement Date', 'Winner Date', 'Announcement Date'])
-                kam_col = find_column(contests, ['KAM', 'Owner', 'Manager', 'Responsible'])
-                to_whom_col = find_column(contests, ['To Whom?', 'To Whom', 'Assigned To', 'Team'])
+                # Date Range Filter Section
+                st.subheader("📅 Select Date Range")
                 
-                if start_date_col:
-                    contests['Start_Date'] = pd.to_datetime(contests[start_date_col], errors='coerce', dayfirst=True)
-                    contests['Year'] = contests['Start_Date'].dt.year
-                    contests['Month_Num'] = contests['Start_Date'].dt.month
+                col1, col2 = st.columns(2)
                 
-                today = datetime.now().date()
-                current_month = today.month
-                current_year = today.year
+                with col1:
+                    # Get min and max dates safely
+                    if start_date_col and pd.notna(contests[start_date_col]).any():
+                        try:
+                            min_date = contests[start_date_col].min().date()
+                            max_date = contests[start_date_col].max().date()
+                        except:
+                            min_date = date(current_year, 1, 1)
+                            max_date = today
+                    else:
+                        min_date = date(current_year, 1, 1)
+                        max_date = today
+                    
+                    start_date = st.date_input(
+                        "From Date",
+                        value=date(current_year, current_month, 1),
+                        min_value=min_date,
+                        max_value=max_date,
+                        key="contest_start_date"
+                    )
                 
-                # Filter options
+                with col2:
+                    end_date = st.date_input(
+                        "To Date",
+                        value=today,
+                        min_value=min_date,
+                        max_value=max_date,
+                        key="contest_end_date"
+                    )
+                
+                # Additional Filters
+                st.subheader("🔍 Additional Filters")
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
                     # Year filter
-                    if 'Year' in contests.columns:
+                    if 'Year' in contests.columns and pd.notna(contests['Year']).any():
                         years = sorted(contests['Year'].dropna().unique(), reverse=True)
                         years = [int(y) for y in years if pd.notna(y)]
                         selected_year = st.selectbox(
                             "Select Year",
                             ["All Years"] + years,
-                            index=0
+                            index=0,
+                            key="contest_year"
                         )
                     else:
                         selected_year = "All Years"
@@ -324,47 +327,29 @@ if client:
                         "All Months", "January", "February", "March", "April", "May", "June",
                         "July", "August", "September", "October", "November", "December"
                     ]
-                    selected_month = st.selectbox("Select Month", months, index=0)
+                    selected_month = st.selectbox("Select Month", months, index=0, key="contest_month")
                 
                 with col3:
                     # Camp Type filter
-                    if camp_type_col:
+                    if camp_type_col and pd.notna(contests[camp_type_col]).any():
                         camp_types = ["All Types"] + sorted(contests[camp_type_col].dropna().unique().tolist())
-                        selected_type = st.selectbox("Campaign Type", camp_types, index=0)
+                        selected_type = st.selectbox("Campaign Type", camp_types, index=0, key="contest_type")
                     else:
                         selected_type = "All Types"
                 
-                # Date range filter
-                st.subheader("📅 Custom Date Range")
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    if start_date_col and start_date_col in contests.columns:
-                        min_date = contests[start_date_col].min().date()
-                        max_date = contests[start_date_col].max().date()
-                        
-                        start_date = st.date_input(
-                            "From Date",
-                            value=datetime(current_year, current_month, 1).date(),
-                            min_value=min_date,
-                            max_value=max_date
-                        )
-                    else:
-                        start_date = datetime(current_year, current_month, 1).date()
-                
-                with col2:
-                    if start_date_col and start_date_col in contests.columns:
-                        end_date = st.date_input(
-                            "To Date",
-                            value=today,
-                            min_value=min_date,
-                            max_value=max_date
-                        )
-                    else:
-                        end_date = today
-                
                 # Apply filters
                 filtered_contests = contests.copy()
+                
+                # Date range filter
+                if start_date_col and end_date_col:
+                    start_datetime = pd.Timestamp(start_date)
+                    end_datetime = pd.Timestamp(end_date)
+                    
+                    # Filter by date range
+                    filtered_contests = filtered_contests[
+                        (filtered_contests[start_date_col].dt.date >= start_date) & 
+                        (filtered_contests[end_date_col].dt.date <= end_date)
+                    ]
                 
                 # Year filter
                 if selected_year != "All Years" and 'Year' in filtered_contests.columns:
@@ -376,18 +361,8 @@ if client:
                     filtered_contests = filtered_contests[filtered_contests['Month_Num'] == month_num]
                 
                 # Camp Type filter
-                if selected_type != "All Types" and camp_type_col:
+                if selected_type != "All Types" and camp_type_col and camp_type_col in filtered_contests.columns:
                     filtered_contests = filtered_contests[filtered_contests[camp_type_col] == selected_type]
-                
-                # Date range filter
-                if start_date_col and end_date_col:
-                    start_datetime = pd.Timestamp(start_date)
-                    end_datetime = pd.Timestamp(end_date)
-                    
-                    filtered_contests = filtered_contests[
-                        (filtered_contests[start_date_col] >= start_datetime) & 
-                        (filtered_contests[end_date_col] <= end_datetime)
-                    ]
                 
                 # Display results
                 st.subheader(f"📊 Results: {len(filtered_contests)} contests found")
@@ -398,18 +373,23 @@ if client:
                     with col1:
                         st.metric("Total Contests", len(filtered_contests))
                     with col2:
-                        if camp_type_col:
+                        if camp_type_col and camp_type_col in filtered_contests.columns:
                             unique_types = filtered_contests[camp_type_col].nunique()
                             st.metric("Campaign Types", unique_types)
+                        else:
+                            st.metric("Campaign Types", "N/A")
                     with col3:
-                        if kam_col:
+                        if kam_col and kam_col in filtered_contests.columns:
                             unique_kams = filtered_contests[kam_col].nunique()
                             st.metric("KAMs Involved", unique_kams)
+                        else:
+                            st.metric("KAMs Involved", "N/A")
                     
                     # Show as cards or table based on toggle
-                    view_mode = st.radio("View Mode:", ["Cards View", "Table View"], horizontal=True)
+                    view_mode = st.radio("View Mode:", ["Cards View", "Table View"], horizontal=True, key="contest_view")
                     
                     if view_mode == "Cards View":
+                        st.markdown("---")
                         for _, row in filtered_contests.iterrows():
                             card_html = create_contest_card(
                                 row, camp_name_col, camp_type_col, start_date_col, end_date_col,
@@ -444,7 +424,8 @@ if client:
                             "📥 Download Results",
                             csv,
                             f"contests_{start_date}_to_{end_date}.csv",
-                            "text/csv"
+                            "text/csv",
+                            key="contest_download"
                         )
                 else:
                     st.info("No contests found for selected filters")
@@ -452,7 +433,7 @@ if client:
                 st.warning("No contest data available")
         
         # ============================================
-        # CHECK WINNERS SECTION
+        # CHECK WINNERS SECTION WITH DATE FILTER
         # ============================================
         elif section == "🏆 Check Winners":
             st.header("🏆 Check Winners")
@@ -460,11 +441,49 @@ if client:
             if not winners.empty and winner_sheet_name:
                 st.success(f"✅ Loaded {len(winners)} winners from {winner_sheet_name}")
                 
-                # Fix dates in winner data
-                if 'Start Date' in winners.columns:
-                    winners['Start Date'] = pd.to_datetime(winners['Start Date'], errors='coerce', dayfirst=True)
-                if 'End Date' in winners.columns:
-                    winners['End Date'] = pd.to_datetime(winners['End Date'], errors='coerce', dayfirst=True)
+                # Date Range Filter for Winners
+                st.subheader("📅 Filter by Contest Date Range")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Get min and max dates from winners data
+                    if 'Start Date' in winners.columns and pd.notna(winners['Start Date']).any():
+                        try:
+                            winner_min_date = winners['Start Date'].min().date()
+                            winner_max_date = winners['Start Date'].max().date()
+                        except:
+                            winner_min_date = date(2023, 1, 1)
+                            winner_max_date = today
+                    else:
+                        winner_min_date = date(2023, 1, 1)
+                        winner_max_date = today
+                    
+                    winner_start_date = st.date_input(
+                        "From Contest Start Date",
+                        value=date(current_year, current_month, 1),
+                        min_value=winner_min_date,
+                        max_value=winner_max_date,
+                        key="winner_start_date"
+                    )
+                
+                with col2:
+                    winner_end_date = st.date_input(
+                        "To Contest End Date",
+                        value=today,
+                        min_value=winner_min_date,
+                        max_value=winner_max_date,
+                        key="winner_end_date"
+                    )
+                
+                # Apply date filter to winners
+                filtered_winners = winners.copy()
+                
+                if 'Start Date' in filtered_winners.columns and 'End Date' in filtered_winners.columns:
+                    filtered_winners = filtered_winners[
+                        (filtered_winners['Start Date'].dt.date >= winner_start_date) & 
+                        (filtered_winners['End Date'].dt.date <= winner_end_date)
+                    ]
                 
                 # Winner search section
                 st.subheader("🔍 Search Winner")
@@ -473,7 +492,7 @@ if client:
                     "Search by:",
                     ["BZID", "Phone Number", "Customer Name"],
                     horizontal=True,
-                    key="search_option"
+                    key="winner_search_option"
                 )
                 
                 if search_option == "BZID":
@@ -486,87 +505,107 @@ if client:
                     search_col = 'customer_firstname'
                     placeholder = "Enter customer name"
                 
-                search_input = st.text_input(placeholder, key="winner_search")
+                search_input = st.text_input(placeholder, key="winner_search_input")
                 
-                if search_input and search_col in winners.columns:
-                    # Clean and search
-                    winners[search_col] = winners[search_col].astype(str).fillna('')
-                    results = winners[winners[search_col].str.contains(search_input.strip(), case=False, na=False)]
+                # Quick stats for filtered period
+                st.subheader("📊 Quick Stats (for selected date range)")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total Winners", len(filtered_winners))
+                with col2:
+                    if 'Gift' in filtered_winners.columns:
+                        unique_gifts = filtered_winners['Gift'].nunique()
+                        st.metric("Unique Prizes", unique_gifts)
+                    else:
+                        st.metric("Unique Prizes", 0)
+                with col3:
+                    if 'customer_firstname' in filtered_winners.columns:
+                        unique_customers = filtered_winners['customer_firstname'].nunique()
+                        st.metric("Unique Customers", unique_customers)
+                    else:
+                        st.metric("Unique Customers", 0)
+                
+                if search_input and search_col in filtered_winners.columns:
+                    # Clean and search within filtered winners
+                    filtered_winners[search_col] = filtered_winners[search_col].astype(str).fillna('')
+                    results = filtered_winners[filtered_winners[search_col].str.contains(search_input.strip(), case=False, na=False)]
                     
                     if not results.empty:
-                        st.success(f"✅ Found {len(results)} winner(s)")
+                        st.success(f"✅ Found {len(results)} winner(s) in selected date range")
                         
-                        # Show each winner
-                        for idx, (_, row) in enumerate(results.iterrows()):
-                            with st.expander(f"🏆 Winner {idx+1}: {row.get('customer_firstname', 'N/A')} - {row.get('Gift', 'N/A')}", expanded=True):
-                                col1, col2 = st.columns([2, 1])
-                                
-                                with col1:
-                                    # Contest Details
-                                    st.subheader("📋 Contest Details")
-                                    
-                                    camp_desc = str(row.get('Camp Description', 'N/A')).strip()
-                                    contest_eligibility = str(row.get('Contest', 'N/A')).strip()
-                                    gift = str(row.get('Gift', 'N/A')).strip()
-                                    
-                                    # Get dates from winner data
-                                    start_date_val = row.get('Start Date', None)
-                                    end_date_val = row.get('End Date', None)
-                                    
-                                    # Format dates
-                                    start_date_str = 'N/A'
-                                    end_date_str = 'N/A'
-                                    
-                                    if pd.notna(start_date_val):
-                                        if hasattr(start_date_val, 'strftime'):
-                                            start_date_str = start_date_val.strftime('%d-%m-%Y')
-                                        else:
-                                            start_date_str = str(start_date_val)
-                                    
-                                    if pd.notna(end_date_val):
-                                        if hasattr(end_date_val, 'strftime'):
-                                            end_date_str = end_date_val.strftime('%d-%m-%Y')
-                                        else:
-                                            end_date_str = str(end_date_val)
-                                    
-                                    st.markdown(f"""
-                                    **Camp Description:** {camp_desc}  
-                                    **Eligibility:** {contest_eligibility}  
-                                    **Prize:** {gift}  
-                                    **Duration:** {start_date_str} to {end_date_str}
-                                    """)
-                                
-                                with col2:
-                                    # Winner Details
-                                    st.subheader("👤 Winner Info")
-                                    st.markdown(f"""
-                                    **Name:** {row.get('customer_firstname', 'N/A')}  
-                                    **Phone:** {row.get('customer_phonenumber', 'N/A')}  
-                                    **Store:** {row.get('business_displayname', 'N/A')}  
-                                    **BZID:** {row.get('businessid', 'N/A')}  
-                                    **Winner Date:** {row.get('Winner Announcement Date', 'N/A')}
-                                    """)
-                                
-                                # Additional details
-                                with st.expander("📄 View Full Details"):
-                                    st.json(row.to_dict())
+                        # Group by customer to show all contests they won
+                        if 'customer_firstname' in results.columns and 'businessid' in results.columns:
+                            grouped_results = results.groupby(['customer_firstname', 'businessid'])
+                            
+                            for (cust_name, bzid), group in grouped_results:
+                                with st.expander(f"👤 {cust_name} (BZID: {bzid}) - {len(group)} win(s)", expanded=True):
+                                    for idx, (_, row) in enumerate(group.iterrows()):
+                                        st.markdown(f"---")
+                                        st.markdown(f"**Win #{idx+1}**")
+                                        
+                                        col1, col2 = st.columns([2, 1])
+                                        
+                                        with col1:
+                                            # Contest Details
+                                            camp_desc = str(row.get('Camp Description', 'N/A')).strip()
+                                            contest_eligibility = str(row.get('Contest', 'N/A')).strip()
+                                            gift = str(row.get('Gift', 'N/A')).strip()
+                                            
+                                            # Get dates from winner data
+                                            start_date_val = row.get('Start Date', None)
+                                            end_date_val = row.get('End Date', None)
+                                            
+                                            # Format dates
+                                            start_date_str = 'N/A'
+                                            end_date_str = 'N/A'
+                                            
+                                            if pd.notna(start_date_val):
+                                                if hasattr(start_date_val, 'strftime'):
+                                                    start_date_str = start_date_val.strftime('%d-%m-%Y')
+                                                else:
+                                                    start_date_str = str(start_date_val)
+                                            
+                                            if pd.notna(end_date_val):
+                                                if hasattr(end_date_val, 'strftime'):
+                                                    end_date_str = end_date_val.strftime('%d-%m-%Y')
+                                                else:
+                                                    end_date_str = str(end_date_val)
+                                            
+                                            st.markdown(f"""
+                                            **Camp Description:** {camp_desc}  
+                                            **Eligibility:** {contest_eligibility}  
+                                            **Prize:** {gift}  
+                                            **Contest Duration:** {start_date_str} to {end_date_str}
+                                            """)
+                                        
+                                        with col2:
+                                            # Winner Details
+                                            st.markdown(f"""
+                                            **Name:** {row.get('customer_firstname', 'N/A')}  
+                                            **Phone:** {row.get('customer_phonenumber', 'N/A')}  
+                                            **Store:** {row.get('business_displayname', 'N/A')}  
+                                            **BZID:** {row.get('businessid', 'N/A')}  
+                                            **Winner Date:** {row.get('Winner Announcement Date', 'N/A')}
+                                            """)
                     else:
-                        st.warning("No winners found for the search criteria")
+                        st.warning("No winners found for the search criteria in selected date range")
+                elif search_input:
+                    st.info("👆 Searching within filtered date range...")
                 else:
-                    st.info("👆 Enter search criteria above to find winners")
+                    st.info("👆 Enter search criteria above to find winners within selected date range")
                     
-                    # Show quick stats
-                    if not winners.empty:
-                        st.subheader("📊 Quick Stats")
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Total Winners", len(winners))
-                        with col2:
-                            unique_gifts = winners['Gift'].nunique() if 'Gift' in winners.columns else 0
-                            st.metric("Unique Prizes", unique_gifts)
-                        with col3:
-                            unique_customers = winners['customer_firstname'].nunique() if 'customer_firstname' in winners.columns else 0
-                            st.metric("Unique Customers", unique_customers)
+                    # Show sample of recent winners
+                    if len(filtered_winners) > 0:
+                        st.subheader("🎯 Recent Winners (in selected date range)")
+                        recent_winners = filtered_winners.head(10)  # Show top 10
+                        
+                        for idx, (_, row) in enumerate(recent_winners.iterrows()):
+                            with st.expander(f"{row.get('customer_firstname', 'N/A')} won {row.get('Gift', 'N/A')}", expanded=False):
+                                st.markdown(f"""
+                                **Contest:** {row.get('Camp Description', 'N/A')}  
+                                **Date:** {row.get('Start Date', 'N/A')} to {row.get('End Date', 'N/A')}  
+                                **Store:** {row.get('business_displayname', 'N/A')}
+                                """)
             else:
                 st.warning("No winner data available")
         
