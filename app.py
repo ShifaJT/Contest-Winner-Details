@@ -16,6 +16,39 @@ def connect_sheets():
         st.error(f"Error: {str(e)[:100]}")
         return None
 
+# Function to find matching contest
+def find_contest_details(winner_row, contests_df):
+    """Find matching contest details for a winner"""
+    # Try different matching strategies
+    gift = str(winner_row.get('Gift', '')).strip()
+    contest_name = str(winner_row.get('Contest', '')).strip()
+    businessid = str(winner_row.get('businessid', '')).strip()
+    
+    # Strategy 1: Check if Gift matches Camp Description
+    if gift and not contests_df.empty:
+        matches = contests_df[contests_df['Camp Description'].str.contains(gift, case=False, na=False)]
+        if not matches.empty:
+            return matches.iloc[0]
+    
+    # Strategy 2: Check if contest name contains keywords
+    if contest_name and not contests_df.empty:
+        # Look for common keywords
+        for keyword in ['CCTV Camera', 'Lucky Contest', 'Buy for', '₹']:
+            if keyword in contest_name:
+                matches = contests_df[contests_df['Camp Description'].str.contains(keyword, case=False, na=False)]
+                if not matches.empty:
+                    return matches.iloc[0]
+    
+    # Strategy 3: Look for any partial match in Camp Description
+    if (gift or contest_name) and not contests_df.empty:
+        search_text = gift if gift else contest_name
+        for idx, contest_row in contests_df.iterrows():
+            camp_desc = str(contest_row.get('Camp Description', ''))
+            if search_text in camp_desc:
+                return contest_row
+    
+    return None
+
 # App
 st.set_page_config(page_title="Contest Check", layout="wide")
 st.title("🎯 Contest Checker")
@@ -243,6 +276,12 @@ if client:
             if not winners.empty:
                 st.success(f"✅ {len(winners)} winners loaded")
                 
+                # Show column names for debugging
+                with st.expander("📋 See Winner Data Columns"):
+                    st.write("Available columns:", list(winners.columns))
+                    st.write("First few rows:")
+                    st.dataframe(winners.head())
+                
                 # Winner search
                 search_by = st.radio("Search by:", ["BZID", "Phone", "Name"], horizontal=True)
                 
@@ -268,20 +307,19 @@ if client:
                         
                         # Display each winner with contest details
                         for _, row in results.iterrows():
-                            # Get contest name from winner data
-                            contest_name = row.get('Contest', 'N/A')
+                            # Get contest/gift info from winner
+                            gift = str(row.get('Gift', 'N/A')).strip()
+                            contest_name = str(row.get('Contest', 'N/A')).strip()
                             
-                            # Find matching contest in contest details
-                            contest_info = contests[
-                                contests['Camp Name'].str.contains(contest_name, case=False, na=False)
-                            ]
+                            # Find matching contest
+                            contest_info = find_contest_details(row, contests)
                             
                             # Prepare contest details
-                            if not contest_info.empty:
-                                contest_row = contest_info.iloc[0]
-                                camp_desc = contest_row.get('Camp Description', 'N/A')
-                                start_date = contest_row.get('Start Date', 'N/A')
-                                end_date = contest_row.get('End Date', 'N/A')
+                            if contest_info is not None:
+                                camp_name = contest_info.get('Camp Name', 'N/A')
+                                camp_desc = contest_info.get('Camp Description', 'N/A')
+                                start_date = contest_info.get('Start Date', None)
+                                end_date = contest_info.get('End Date', None)
                                 
                                 # Format dates if they exist
                                 if pd.notna(start_date):
@@ -294,20 +332,25 @@ if client:
                                 else:
                                     end_date_str = 'N/A'
                             else:
-                                camp_desc = 'Contest details not found'
+                                camp_name = 'N/A'
+                                camp_desc = 'N/A'
                                 start_date_str = 'N/A'
                                 end_date_str = 'N/A'
                             
                             # Display winner card with contest info
                             st.markdown(f"""
-                            **🎁 {row.get('Gift', 'N/A')}**
-                            - **Contest:** {contest_name}
+                            ### 🎁 {gift}
+                            **📋 Contest Details:**
+                            - **Camp Name:** {camp_name}
                             - **Camp Description:** {camp_desc}
                             - **Contest Duration:** {start_date_str} to {end_date_str}
+                            
+                            **👤 Winner Details:**
                             - **Customer:** {row.get('customer_firstname', 'N/A')}
                             - **Phone:** {row.get('customer_phonenumber', 'N/A')}
                             - **Store:** {row.get('business_displayname', 'N/A')}
                             - **BZID:** {row.get('businessid', 'N/A')}
+                            
                             ---
                             """)
                     else:
