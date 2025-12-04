@@ -3,21 +3,15 @@ import pandas as pd
 from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
-import json
 
 # Simple connection
 def connect_sheets():
     try:
-        # Get secrets
         creds_dict = dict(st.secrets["google_sheets"])
-        
-        # Create credentials
         scopes = ['https://www.googleapis.com/auth/spreadsheets']
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = gspread.authorize(creds)
-        
         return client
-        
     except Exception as e:
         st.error(f"Error: {str(e)[:100]}")
         return None
@@ -32,16 +26,16 @@ client = connect_sheets()
 
 if client:
     try:
-        # Open sheet
         sheet = client.open_by_key("1E2qxc1kZttPQMmSXCVXFaQKVNLl_Nhe4uUPBrzf7B3U")
         st.success("✅ Connected!")
         
-        # Get sheet names
+        # Get ALL sheet names
         worksheets = sheet.worksheets()
-        st.write(f"**Sheets found:** {[ws.title for ws in worksheets]}")
+        sheet_names = [ws.title for ws in worksheets]
+        st.write(f"**Available sheets:** {sheet_names}")
         
         # Load Contest Details
-        try:
+        if 'Contest Details' in sheet_names:
             contest_ws = sheet.worksheet("Contest Details")
             contest_data = contest_ws.get_all_records()
             contests = pd.DataFrame(contest_data)
@@ -49,16 +43,18 @@ if client:
             if not contests.empty:
                 st.success(f"📋 {len(contests)} contests loaded")
                 
-                # Show current contests
-                st.header("📢 Current Contests")
-                
                 # Fix dates
                 contests['Start Date'] = pd.to_datetime(contests['Start Date'], errors='coerce', dayfirst=True)
                 contests['End Date'] = pd.to_datetime(contests['End Date'], errors='coerce', dayfirst=True)
                 
+                # ============================================
+                # CURRENT CONTESTS
+                # ============================================
+                st.header("📢 Current Contests")
+                
                 today = datetime.now().date()
                 
-                # Current contests
+                # Find current contests
                 current = contests[
                     (contests['Start Date'].dt.date <= today) & 
                     (contests['End Date'].dt.date >= today)
@@ -66,25 +62,85 @@ if client:
                 
                 if not current.empty:
                     for _, row in current.iterrows():
-                        st.write(f"**{row.get('Camp Name', 'N/A')}**")
-                        st.write(f"Ends: {row['End Date'].strftime('%d %b')}")
-                        st.write("---")
+                        st.markdown(f"""
+                        **{row.get('Camp Name', 'N/A')}**
+                        - Type: {row.get('Camp Type', 'N/A')}
+                        - Ends: {row['End Date'].strftime('%d %b')}
+                        - KAM: {row.get('KAM', 'N/A')}
+                        ---
+                        """)
                 else:
                     st.info("No contests running today")
-            
-        except Exception as e:
-            st.error(f"Contest sheet error: {str(e)}")
+                
+                # ============================================
+                # UPCOMING CONTESTS
+                # ============================================
+                upcoming = contests[
+                    (contests['Start Date'].dt.date > today) & 
+                    (contests['Start Date'].dt.date <= (today + pd.Timedelta(days=7)))
+                ]
+                
+                if not upcoming.empty:
+                    st.header("📅 Starting Soon")
+                    
+                    for _, row in upcoming.iterrows():
+                        st.markdown(f"""
+                        **{row.get('Camp Name', 'N/A')}**
+                        - Type: {row.get('Camp Type', 'N/A')}
+                        - Starts: {row['Start Date'].strftime('%d %b')}
+                        ---
+                        """)
+                
+                # ============================================
+                # ALL CONTESTS
+                # ============================================
+                with st.expander("📋 View All Contests"):
+                    # Simple table
+                    table_cols = ['Merch ID', 'Camp Name', 'Camp Type', 'Start Date', 'End Date', 'KAM']
+                    table_cols = [col for col in table_cols if col in contests.columns]
+                    
+                    display_df = contests[table_cols].copy()
+                    
+                    # Format dates
+                    if 'Start Date' in display_df.columns:
+                        display_df['Start Date'] = display_df['Start Date'].dt.strftime('%d-%m-%Y')
+                    if 'End Date' in display_df.columns:
+                        display_df['End Date'] = display_df['End Date'].dt.strftime('%d-%m-%Y')
+                    
+                    st.dataframe(display_df, height=300)
+                    
+                    # Download
+                    csv = display_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        "📥 Download All Contests",
+                        csv,
+                        "all_contests.csv",
+                        "text/csv"
+                    )
         
-        # Load Winner Details
-        try:
-            winner_ws = sheet.worksheet("Winner Details")
+        # ============================================
+        # LOAD WINNER DATA
+        # ============================================
+        # Try different possible sheet names
+        winner_sheet_names = ['Winners Details ', 'Winner Details', 'Winners Details', 'Winner Details ']
+        winner_sheet_found = None
+        
+        for sheet_name in winner_sheet_names:
+            if sheet_name in sheet_names:
+                winner_sheet_found = sheet_name
+                break
+        
+        if winner_sheet_found:
+            winner_ws = sheet.worksheet(winner_sheet_found)
             winner_data = winner_ws.get_all_records()
             winners = pd.DataFrame(winner_data)
             
             if not winners.empty:
-                st.success(f"🏆 {len(winners)} winners loaded")
+                st.success(f"🏆 {len(winners)} winners loaded from '{winner_sheet_found}'")
                 
-                # Winner search
+                # ============================================
+                # WINNER SEARCH
+                # ============================================
                 st.header("🔍 Check Winner")
                 
                 search_by = st.selectbox("Search by", ["BZID", "Phone", "Name"])
@@ -101,33 +157,41 @@ if client:
                         results = pd.DataFrame()
                     
                     if not results.empty:
-                        st.success(f"Found {len(results)} win(s)")
-                        for _, row in results.head(5).iterrows():
-                            st.write(f"**Gift:** {row.get('Gift', 'N/A')}")
-                            st.write(f"**Contest:** {row.get('Contest', 'N/A')}")
-                            st.write("---")
+                        st.success(f"✅ Found {len(results)} win(s)")
+                        
+                        # Show results
+                        for _, row in results.iterrows():
+                            st.markdown(f"""
+                            **🎁 {row.get('Gift', 'N/A')}**
+                            - Contest: {row.get('Contest', 'N/A')}
+                            - Customer: {row.get('customer_firstname', 'N/A')}
+                            - Phone: {row.get('customer_phonenumber', 'N/A')}
+                            - Store: {row.get('business_displayname', 'N/A')}
+                            ---
+                            """)
+                            
+                        # Show all in table
+                        with st.expander("📊 View All Matching Results"):
+                            show_cols = ['businessid', 'customer_firstname', 'customer_phonenumber', 'Contest', 'Gift']
+                            show_cols = [col for col in show_cols if col in results.columns]
+                            st.dataframe(results[show_cols])
                     else:
                         st.warning("No wins found")
                         
-        except Exception as e:
-            st.warning(f"Winner sheet error: {str(e)}")
+        else:
+            st.warning("Winner sheet not found. Looking for: 'Winners Details ', 'Winner Details', etc.")
             
     except Exception as e:
-        st.error(f"Sheet error: {str(e)}")
+        st.error(f"Error: {str(e)}")
         
 else:
-    st.error("""
-    ❌ Connection failed
-    
-    **Quick checks:**
-    1. Sheet shared with: contest-fresh-dashboard@contest-details-dashboard.iam.gserviceaccount.com
-    2. Secrets updated correctly
-    3. Wait 2 minutes after sharing
-    4. Refresh page
-    """)
+    st.error("Connection failed")
 
-# Footer
+# ============================================
+# FOOTER
+# ============================================
 st.markdown("---")
 st.caption(f"Last updated: {datetime.now().strftime('%H:%M')}")
+
 if st.button("🔄 Refresh"):
     st.rerun()
