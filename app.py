@@ -186,6 +186,34 @@ st.markdown("""
         border: 2px solid #667eea;
         border-radius: 5px;
     }
+    
+    /* Style for gift status badges */
+    .gift-delivered {
+        background-color: #4CAF50;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    
+    .gift-pending {
+        background-color: #FF9800;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    
+    .gift-not-found {
+        background-color: #F44336;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: bold;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -258,6 +286,9 @@ if client:
                 winners['End Date'] = safe_to_datetime(winners['End Date'])
             if 'Winner Announcement Date' in winners.columns:
                 winners['Winner Announcement Date'] = safe_to_datetime(winners['Winner Announcement Date'])
+            
+            # Find Gift Status column (handle different possible names)
+            gift_status_col = find_column(winners, ['Gift Status', 'GiftStatus', 'Status', 'Delivery Status'])
        
         today = datetime.now().date()
         current_month = today.month
@@ -672,23 +703,30 @@ if client:
                         (filtered_winners['End Date'].dt.date <= winner_end_date)
                     ]
                 
-                # Quick stats for filtered period
-                st.subheader("📊 Quick Stats (for selected date range)")
-                col1, col2, col3 = st.columns(3)
-                with col1:
+                # Gift Status Statistics
+                st.subheader("📊 Gift Delivery Status (for selected date range)")
+                
+                if gift_status_col and gift_status_col in filtered_winners.columns:
+                    gift_stats = filtered_winners[gift_status_col].value_counts()
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.metric("Total Winners", len(filtered_winners))
+                    with col2:
+                        delivered = gift_stats.get('Delivered', 0)
+                        st.metric("Delivered", delivered)
+                    with col3:
+                        pending = len(filtered_winners) - delivered
+                        st.metric("Pending", pending)
+                    with col4:
+                        if 'Delivered' in gift_stats:
+                            delivery_rate = (delivered / len(filtered_winners)) * 100
+                            st.metric("Delivery Rate", f"{delivery_rate:.1f}%")
+                        else:
+                            st.metric("Delivery Rate", "0%")
+                else:
                     st.metric("Total Winners", len(filtered_winners))
-                with col2:
-                    if 'Gift' in filtered_winners.columns:
-                        unique_gifts = filtered_winners['Gift'].nunique()
-                        st.metric("Unique Prizes", unique_gifts)
-                    else:
-                        st.metric("Unique Prizes", 0)
-                with col3:
-                    if 'customer_firstname' in filtered_winners.columns:
-                        unique_customers = filtered_winners['customer_firstname'].nunique()
-                        st.metric("Unique Customers", unique_customers)
-                    else:
-                        st.metric("Unique Customers", 0)
                 
                 st.markdown("---")
                 
@@ -698,7 +736,7 @@ if client:
                 # Use radio buttons for search option
                 search_option = st.radio(
                     "Search by:",
-                    ["BZID", "Phone Number", "Customer Name"],
+                    ["BZID", "Phone Number", "Customer Name", "Gift Status"],
                     horizontal=True,
                     key="winner_search_option"
                 )
@@ -711,6 +749,9 @@ if client:
                     elif search_option == "Phone Number":
                         search_col = 'customer_phonenumber'
                         placeholder = "Enter phone number (e.g., 9709112026)"
+                    elif search_option == "Gift Status":
+                        search_col = gift_status_col if gift_status_col else 'Gift Status'
+                        placeholder = "Enter status (e.g., Delivered, Pending)"
                     else:
                         search_col = 'customer_firstname'
                         placeholder = "Enter customer name"
@@ -787,31 +828,105 @@ if client:
                                             """)
                                        
                                         with col2:
-                                            # Winner Details
+                                            # Winner Details with Gift Status
+                                            winner_name = row.get('customer_firstname', 'N/A')
+                                            phone = row.get('customer_phonenumber', 'N/A')
+                                            store = row.get('business_displayname', 'N/A')
+                                            bzid_val = row.get('businessid', 'N/A')
+                                            winner_date_val = row.get('Winner Announcement Date', 'N/A')
+                                            
+                                            # Get Gift Status
+                                            gift_status_val = row.get(gift_status_col, 'N/A') if gift_status_col else 'N/A'
+                                            
+                                            # Determine CSS class for gift status
+                                            gift_status_class = ""
+                                            if gift_status_val:
+                                                gift_status_lower = str(gift_status_val).lower()
+                                                if 'delivered' in gift_status_lower:
+                                                    gift_status_class = "gift-delivered"
+                                                elif 'pending' in gift_status_lower or 'not' in gift_status_lower:
+                                                    gift_status_class = "gift-pending"
+                                                else:
+                                                    gift_status_class = "gift-not-found"
+                                            
                                             st.markdown(f"""
-                                            **Name:** {row.get('customer_firstname', 'N/A')}  
-                                            **Phone:** {row.get('customer_phonenumber', 'N/A')}  
-                                            **Store:** {row.get('business_displayname', 'N/A')}  
-                                            **BZID:** {row.get('businessid', 'N/A')}  
-                                            **Winner Date:** {row.get('Winner Announcement Date', 'N/A')}
+                                            **Name:** {winner_name}  
+                                            **Phone:** {phone}  
+                                            **Store:** {store}  
+                                            **BZID:** {bzid_val}  
+                                            **Winner Date:** {winner_date_val}
                                             """)
+                                            
+                                            # Display Gift Status with badge
+                                            if gift_status_val and gift_status_val != 'N/A':
+                                                st.markdown(f"**Gift Status:** <span class='{gift_status_class}'>{gift_status_val}</span>", unsafe_allow_html=True)
+                                            else:
+                                                st.markdown(f"**Gift Status:** {gift_status_val}")
                     else:
                         st.warning("⚠️ No winners found for the search criteria in selected date range")
                 else:
                     st.info("👆 Enter search criteria above to find winners within selected date range")
                    
-                    # Show sample of recent winners
+                    # Show sample of recent winners with Gift Status
                     if len(filtered_winners) > 0:
                         st.subheader("🎯 Recent Winners (in selected date range)")
                         recent_winners = filtered_winners.head(10)  # Show top 10
                        
                         for idx, (_, row) in enumerate(recent_winners.iterrows()):
-                            with st.expander(f"{row.get('customer_firstname', 'N/A')} won {row.get('Gift', 'N/A')}", expanded=False):
+                            # Get gift status value
+                            gift_status_val = row.get(gift_status_col, 'N/A') if gift_status_col else 'N/A'
+                            
+                            # Determine badge color
+                            if gift_status_val == 'Delivered':
+                                badge_color = "🟢"
+                            elif gift_status_val == 'Pending':
+                                badge_color = "🟡"
+                            else:
+                                badge_color = "🔴"
+                            
+                            with st.expander(f"{badge_color} {row.get('customer_firstname', 'N/A')} won {row.get('Gift', 'N/A')} - Status: {gift_status_val}", expanded=False):
                                 st.markdown(f"""
                                 **Contest:** {row.get('Camp Description', 'N/A')}  
                                 **Date:** {row.get('Start Date', 'N/A')} to {row.get('End Date', 'N/A')}  
-                                **Store:** {row.get('business_displayname', 'N/A')}
+                                **Store:** {row.get('business_displayname', 'N/A')}  
+                                **Gift Status:** **{gift_status_val}**
                                 """)
+                
+                # Download winners data
+                if len(filtered_winners) > 0:
+                    st.markdown("---")
+                    st.subheader("📥 Download Winners Data")
+                    
+                    # Create a downloadable CSV
+                    download_cols = [
+                        'Camp Description', 'Contest', 'Gift', 'Start Date', 'End Date',
+                        'businessid', 'customer_customerid', 'customer_phonenumber',
+                        'customer_firstname', 'business_displayname', 'address_addresslocality',
+                        'Winner Announcement Date'
+                    ]
+                    
+                    # Add Gift Status column if available
+                    if gift_status_col and gift_status_col in filtered_winners.columns:
+                        download_cols.append(gift_status_col)
+                    
+                    # Filter to only available columns
+                    available_cols = [col for col in download_cols if col in filtered_winners.columns]
+                    download_df = filtered_winners[available_cols].copy()
+                    
+                    # Format dates for download
+                    for date_col in ['Start Date', 'End Date', 'Winner Announcement Date']:
+                        if date_col in download_df.columns:
+                            download_df[date_col] = download_df[date_col].dt.strftime('%d-%m-%Y')
+                    
+                    csv_data = download_df.to_csv(index=False).encode('utf-8')
+                    
+                    st.download_button(
+                        "📥 Download Winners List",
+                        csv_data,
+                        f"winners_{winner_start_date}_to_{winner_end_date}.csv",
+                        "text/csv",
+                        key="winners_download"
+                    )
             else:
                 st.warning("No winner data available")
        
