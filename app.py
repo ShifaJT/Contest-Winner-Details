@@ -562,7 +562,7 @@ if client:
                 st.warning("No contest data available")
        
         # ============================================
-        # CHECK WINNERS SECTION WITH DATE FILTER
+        # CHECK WINNERS SECTION WITH DATE FILTER - FIXED VISIBILITY
         # ============================================
         elif section == "🏆 Check Winners":
             st.header("🏆 Check Winners")
@@ -613,29 +613,7 @@ if client:
                         (filtered_winners['Start Date'].dt.date >= winner_start_date) &
                         (filtered_winners['End Date'].dt.date <= winner_end_date)
                     ]
-               
-                # Winner search section
-                st.subheader("🔍 Search Winner")
-               
-                search_option = st.radio(
-                    "Search by:",
-                    ["BZID", "Phone Number", "Customer Name"],
-                    horizontal=True,
-                    key="winner_search_option"
-                )
-               
-                if search_option == "BZID":
-                    search_col = 'businessid'
-                    placeholder = "Enter BZID (e.g., BZID-1304114892)"
-                elif search_option == "Phone Number":
-                    search_col = 'customer_phonenumber'
-                    placeholder = "Enter phone number (e.g., 9709112026)"
-                else:
-                    search_col = 'customer_firstname'
-                    placeholder = "Enter customer name"
-               
-                search_input = st.text_input(placeholder, key="winner_search_input")
-               
+                
                 # Quick stats for filtered period
                 st.subheader("📊 Quick Stats (for selected date range)")
                 col1, col2, col3 = st.columns(3)
@@ -653,73 +631,153 @@ if client:
                         st.metric("Unique Customers", unique_customers)
                     else:
                         st.metric("Unique Customers", 0)
-               
-                if search_input and search_col in filtered_winners.columns:
-                    # Clean and search within filtered winners
-                    filtered_winners[search_col] = filtered_winners[search_col].astype(str).fillna('')
-                    results = filtered_winners[filtered_winners[search_col].str.contains(search_input.strip(), case=False, na=False)]
-                   
-                    if not results.empty:
-                        st.success(f"✅ Found {len(results)} winner(s) in selected date range")
-                       
-                        # Group by customer to show all contests they won
-                        if 'customer_firstname' in results.columns and 'businessid' in results.columns:
-                            grouped_results = results.groupby(['customer_firstname', 'businessid'])
-                           
-                            for (cust_name, bzid), group in grouped_results:
-                                with st.expander(f"👤 {cust_name} (BZID: {bzid}) - {len(group)} win(s)", expanded=True):
-                                    for idx, (_, row) in enumerate(group.iterrows()):
-                                        st.markdown(f"---")
-                                        st.markdown(f"**Win #{idx+1}**")
-                                       
-                                        col1, col2 = st.columns([2, 1])
-                                       
-                                        with col1:
-                                            # Contest Details
-                                            camp_desc = str(row.get('Camp Description', 'N/A')).strip()
-                                            contest_eligibility = str(row.get('Contest', 'N/A')).strip()
-                                            gift = str(row.get('Gift', 'N/A')).strip()
-                                           
-                                            # Get dates from winner data
-                                            start_date_val = row.get('Start Date', None)
-                                            end_date_val = row.get('End Date', None)
-                                           
-                                            # Format dates
-                                            start_date_str = 'N/A'
-                                            end_date_str = 'N/A'
-                                           
-                                            if pd.notna(start_date_val):
-                                                if hasattr(start_date_val, 'strftime'):
-                                                    start_date_str = start_date_val.strftime('%d-%m-%Y')
-                                                else:
-                                                    start_date_str = str(start_date_val)
-                                           
-                                            if pd.notna(end_date_val):
-                                                if hasattr(end_date_val, 'strftime'):
-                                                    end_date_str = end_date_val.strftime('%d-%m-%Y')
-                                                else:
-                                                    end_date_str = str(end_date_val)
-                                           
-                                            st.markdown(f"""
-                                            **Camp Description:** {camp_desc}  
-                                            **Eligibility:** {contest_eligibility}  
-                                            **Prize:** {gift}  
-                                            **Contest Duration:** {start_date_str} to {end_date_str}
-                                            """)
-                                       
-                                        with col2:
-                                            # Winner Details
-                                            st.markdown(f"""
-                                            **Name:** {row.get('customer_firstname', 'N/A')}  
-                                            **Phone:** {row.get('customer_phonenumber', 'N/A')}  
-                                            **Store:** {row.get('business_displayname', 'N/A')}  
-                                            **BZID:** {row.get('businessid', 'N/A')}  
-                                            **Winner Date:** {row.get('Winner Announcement Date', 'N/A')}
-                                            """)
+                
+                st.markdown("---")  # Add separator for better visibility
+                
+                # Winner search section - FIXED VISIBILITY
+                st.subheader("🔍 Search Winner")
+                
+                # Create a visually distinct container for the search section
+                with st.container():
+                    # Use columns for better layout
+                    search_col1, search_col2 = st.columns([3, 2])
+                    
+                    with search_col1:
+                        search_option = st.radio(
+                            "Search by:",
+                            ["BZID", "Phone Number", "Customer Name"],
+                            horizontal=True,
+                            key="winner_search_option"
+                        )
+                    
+                    with search_col2:
+                        # Show placeholder based on selection
+                        if search_option == "BZID":
+                            placeholder = "Enter BZID (e.g., BZID-1304114892)"
+                        elif search_option == "Phone Number":
+                            placeholder = "Enter phone number (e.g., 9709112026)"
+                        else:
+                            placeholder = "Enter customer name"
+                        
+                        # Add some CSS for better visibility
+                        st.markdown("""
+                            <style>
+                            .search-input {
+                                background-color: #f0f2f6;
+                                padding: 10px;
+                                border-radius: 5px;
+                                border: 1px solid #ddd;
+                            }
+                            </style>
+                        """, unsafe_allow_html=True)
+                
+                # Search input box with better styling
+                st.markdown("### 🔎 Enter Search Value")
+                
+                # Create a highlighted search area
+                with st.container():
+                    if search_option == "BZID":
+                        search_col = 'businessid'
+                        placeholder = "Enter BZID (e.g., BZID-1304114892)"
+                    elif search_option == "Phone Number":
+                        search_col = 'customer_phonenumber'
+                        placeholder = "Enter phone number (e.g., 9709112026)"
                     else:
-                        st.warning("No winners found for the search criteria in selected date range")
-                elif search_input:
-                    st.info("👆 Searching within filtered date range...")
+                        search_col = 'customer_firstname'
+                        placeholder = "Enter customer name"
+                    
+                    # Use a form for better UX
+                    with st.form(key="search_form"):
+                        # Add clear label and instructions
+                        st.markdown(f"**Please enter the {search_option} to search:**")
+                        
+                        # Create a more visible input field
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            search_input = st.text_input(
+                                "",
+                                placeholder=placeholder,
+                                key="winner_search_input",
+                                label_visibility="collapsed"
+                            )
+                        with col2:
+                            search_submitted = st.form_submit_button("🔍 Search", use_container_width=True)
+                    
+                    # Add visual separator
+                    st.markdown("---")
+                
+                # Process search
+                if search_input or search_submitted:
+                    if search_input and search_col in filtered_winners.columns:
+                        # Clean and search within filtered winners
+                        filtered_winners[search_col] = filtered_winners[search_col].astype(str).fillna('')
+                        results = filtered_winners[filtered_winners[search_col].str.contains(search_input.strip(), case=False, na=False)]
+                       
+                        if not results.empty:
+                            st.success(f"✅ Found {len(results)} winner(s) in selected date range")
+                           
+                            # Group by customer to show all contests they won
+                            if 'customer_firstname' in results.columns and 'businessid' in results.columns:
+                                grouped_results = results.groupby(['customer_firstname', 'businessid'])
+                               
+                                for (cust_name, bzid), group in grouped_results:
+                                    with st.expander(f"👤 {cust_name} (BZID: {bzid}) - {len(group)} win(s)", expanded=True):
+                                        for idx, (_, row) in enumerate(group.iterrows()):
+                                            st.markdown(f"---")
+                                            st.markdown(f"**Win #{idx+1}**")
+                                           
+                                            col1, col2 = st.columns([2, 1])
+                                           
+                                            with col1:
+                                                # Contest Details
+                                                camp_desc = str(row.get('Camp Description', 'N/A')).strip()
+                                                contest_eligibility = str(row.get('Contest', 'N/A')).strip()
+                                                gift = str(row.get('Gift', 'N/A')).strip()
+                                               
+                                                # Get dates from winner data
+                                                start_date_val = row.get('Start Date', None)
+                                                end_date_val = row.get('End Date', None)
+                                               
+                                                # Format dates
+                                                start_date_str = 'N/A'
+                                                end_date_str = 'N/A'
+                                               
+                                                if pd.notna(start_date_val):
+                                                    if hasattr(start_date_val, 'strftime'):
+                                                        start_date_str = start_date_val.strftime('%d-%m-%Y')
+                                                    else:
+                                                        start_date_str = str(start_date_val)
+                                               
+                                                if pd.notna(end_date_val):
+                                                    if hasattr(end_date_val, 'strftime'):
+                                                        end_date_str = end_date_val.strftime('%d-%m-%Y')
+                                                    else:
+                                                        end_date_str = str(end_date_val)
+                                               
+                                                st.markdown(f"""
+                                                **Camp Description:** {camp_desc}  
+                                                **Eligibility:** {contest_eligibility}  
+                                                **Prize:** {gift}  
+                                                **Contest Duration:** {start_date_str} to {end_date_str}
+                                                """)
+                                           
+                                            with col2:
+                                                # Winner Details
+                                                st.markdown(f"""
+                                                **Name:** {row.get('customer_firstname', 'N/A')}  
+                                                **Phone:** {row.get('customer_phonenumber', 'N/A')}  
+                                                **Store:** {row.get('business_displayname', 'N/A')}  
+                                                **BZID:** {row.get('businessid', 'N/A')}  
+                                                **Winner Date:** {row.get('Winner Announcement Date', 'N/A')}
+                                                """)
+                        else:
+                            st.warning("⚠️ No winners found for the search criteria in selected date range")
+                           
+                            # Show suggestions for better search
+                            if search_option == "BZID":
+                                st.info("💡 Tip: Try searching without 'BZID-' prefix. For example, search '1304114892' instead of 'BZID-1304114892'")
+                            elif search_option == "Phone Number":
+                                st.info("💡 Tip: Make sure to enter the complete 10-digit phone number")
                 else:
                     st.info("👆 Enter search criteria above to find winners within selected date range")
                    
@@ -754,3 +812,42 @@ if st.sidebar.button("🔄 Refresh Data"):
     st.cache_data.clear()
     st.rerun()
 
+# Add custom CSS for better visibility
+st.markdown("""
+<style>
+    /* Style for search section */
+    div[data-testid="stVerticalBlock"] > div:has(> div[data-testid="stVerticalBlock"] > div[data-testid="stRadio"]) {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #e9ecef;
+        margin-bottom: 15px;
+    }
+    
+    /* Style for input fields */
+    .stTextInput > div > div > input {
+        background-color: #ffffff;
+        border: 2px solid #4CAF50;
+        padding: 10px;
+        font-size: 16px;
+    }
+    
+    /* Style for radio buttons */
+    .stRadio > div {
+        flex-direction: row;
+        align-items: center;
+        background-color: #ffffff;
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid #ddd;
+    }
+    
+    /* Style for metrics */
+    .stMetric {
+        background-color: #f8f9fa;
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid #e9ecef;
+    }
+</style>
+""", unsafe_allow_html=True)
