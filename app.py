@@ -77,57 +77,32 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
     if is_running:
         gradient = "linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%)"  # Green for running
         badge = "🏃 RUNNING NOW"
-        badge_bg = "#2E7D32"
     else:
         gradient = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"  # Purple for upcoming
         badge = "📅 UPCOMING"
-        badge_bg = "#764ba2"
    
-    # Create card - improved layout
+    # Create card
     card_html = f"""
     <div style="
         background: {gradient};
         border-radius: 10px;
         padding: 20px;
-        margin: 15px 0;
+        margin: 10px 0;
         color: white;
-        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         position: relative;
-        border: 1px solid rgba(255, 255, 255, 0.2);
     ">
-        <div style="
-            position: absolute; 
-            top: 12px; 
-            right: 12px; 
-            background: {badge_bg};
-            padding: 4px 12px; 
-            border-radius: 15px; 
-            font-size: 11px;
-            font-weight: bold;
-            color: white;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        ">
+        <div style="position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 12px; font-size: 12px;">
             {badge}
         </div>
-        <h3 style="
-            margin: 0 0 15px 0; 
-            color: white; 
-            padding-right: 100px;
-            font-size: 18px;
-            font-weight: 600;
-        ">{camp_name}</h3>
-        <div style="
-            display: grid; 
-            grid-template-columns: 1fr 1fr; 
-            gap: 12px;
-            font-size: 14px;
-        ">
-            <div style="line-height: 1.6;">
+        <h3 style="margin: 0 0 10px 0; color: white; padding-right: 80px;">{camp_name}</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div>
                 <strong>🎯 Type:</strong> {camp_type}<br>
                 <strong>👤 KAM:</strong> {kam}<br>
                 <strong>👥 Team:</strong> {to_whom}
             </div>
-            <div style="line-height: 1.6;">
+            <div>
                 <strong>📅 Starts:</strong> {start_date}<br>
                 <strong>🏁 Ends:</strong> {end_date}<br>
                 <strong>🏆 Winner Date:</strong> {winner_date}
@@ -138,174 +113,55 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
     """
     return card_html
 
-# Initialize session state for navigation
+# Initialize session state
 if 'current_section' not in st.session_state:
     st.session_state.current_section = "🎯 Contest Dashboard"
 
-# Initialize checkbox states
-if 'nav_dashboard' not in st.session_state:
-    st.session_state.nav_dashboard = True
-if 'nav_filter' not in st.session_state:
-    st.session_state.nav_filter = False
-if 'nav_winners' not in st.session_state:
-    st.session_state.nav_winners = False
-
 # App
-st.set_page_config(page_title="Contest Check", layout="wide", page_icon="🏆")
-st.title("🏆 Contest Checker")
+st.set_page_config(page_title="Contest Check", layout="wide")
+st.title("🎯 Contest Checker")
 st.markdown("---")
+
+# Create navigation menu with radio buttons
+st.sidebar.title("📊 Navigation")
+section = st.sidebar.radio(
+    "Go to:",
+    ["🎯 Contest Dashboard", "🔍 Filter Contests", "🏆 Check Winners"],
+    index=0  # Default to Contest Dashboard
+)
 
 # Connect to Google Sheets
 client = connect_sheets()
 
-# Custom CSS for better styling
+# Add some custom CSS for better appearance
 st.markdown("""
 <style>
-    /* Main container styling */
-    .main .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-    }
-    
-    /* Sidebar styling */
-    section[data-testid="stSidebar"] {
-        background-color: #f8f9fa;
-        padding: 20px;
-    }
-    
-    /* Checkbox styling for navigation */
-    .stCheckbox > label {
-        font-size: 16px;
-        font-weight: 500;
-        padding: 8px 0;
-        cursor: pointer;
-    }
-    
-    .stCheckbox > label > div:first-child {
-        margin-right: 10px;
-    }
-    
-    /* Selected checkbox styling */
-    .stCheckbox > label[data-checked="true"] {
-        color: #1E88E5;
-        font-weight: 600;
-    }
-    
-    /* Card hover effects */
-    .stMarkdown div[style*="linear-gradient"]:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-        transition: all 0.3s ease;
-    }
-    
-    /* Metric cards styling */
-    .stMetric {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 10px;
-        padding: 20px;
-        color: white;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
-    
-    .stMetric label {
-        color: white !important;
-        font-weight: 500 !important;
-    }
-    
-    .stMetric div {
-        color: white !important;
-        font-size: 24px !important;
-        font-weight: 600 !important;
-    }
-    
-    /* Button styling */
-    .stButton button {
-        background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
-        color: white;
-        border: none;
-        padding: 10px 20px;
-        border-radius: 5px;
-        font-weight: 500;
-        width: 100%;
-    }
-    
-    .stButton button:hover {
-        background: linear-gradient(135deg, #43A047 0%, #1B5E20 100%);
-        color: white;
-    }
-    
-    /* Radio button styling */
+    /* Style for radio buttons */
     .stRadio > div {
-        background: #f8f9fa;
+        background-color: #f8f9fa;
         padding: 10px;
         border-radius: 5px;
         border: 1px solid #dee2e6;
     }
     
-    /* Text input styling */
-    .stTextInput > div > div > input {
-        border: 2px solid #667eea;
-        border-radius: 5px;
-        padding: 10px;
+    /* Style for selected radio button */
+    .stRadio > div > label > div:first-child {
+        background-color: #4CAF50 !important;
     }
     
-    /* Success messages */
-    .stAlert.stSuccess {
-        background: #d4edda;
-        border: 1px solid #c3e6cb;
-        color: #155724;
+    /* Style for date inputs */
+    .stDateInput > div > div > input {
+        border: 2px solid #667eea;
+        border-radius: 5px;
+    }
+    
+    /* Style for select boxes */
+    .stSelectbox > div > div > select {
+        border: 2px solid #667eea;
         border-radius: 5px;
     }
 </style>
 """, unsafe_allow_html=True)
-
-# Create navigation menu with checkboxes
-with st.sidebar:
-    st.markdown("### 📊 Navigation")
-    st.markdown("**Go to:**")
-    
-    # Create checkboxes for navigation
-    contest_dashboard = st.checkbox(
-        "🎯 Contest Dashboard", 
-        value=st.session_state.nav_dashboard,
-        key="nav_dashboard_checkbox"
-    )
-    
-    filter_contests = st.checkbox(
-        "🔍 Filter Contests", 
-        value=st.session_state.nav_filter,
-        key="nav_filter_checkbox"
-    )
-    
-    check_winners = st.checkbox(
-        "🏆 Check Winners", 
-        value=st.session_state.nav_winners,
-        key="nav_winners_checkbox"
-    )
-    
-    # Update session state based on checkbox interactions
-    if contest_dashboard and not st.session_state.nav_dashboard:
-        st.session_state.current_section = "🎯 Contest Dashboard"
-        st.session_state.nav_dashboard = True
-        st.session_state.nav_filter = False
-        st.session_state.nav_winners = False
-        st.rerun()
-    
-    if filter_contests and not st.session_state.nav_filter:
-        st.session_state.current_section = "🔍 Filter Contests"
-        st.session_state.nav_dashboard = False
-        st.session_state.nav_filter = True
-        st.session_state.nav_winners = False
-        st.rerun()
-    
-    if check_winners and not st.session_state.nav_winners:
-        st.session_state.current_section = "🏆 Check Winners"
-        st.session_state.nav_dashboard = False
-        st.session_state.nav_filter = False
-        st.session_state.nav_winners = True
-        st.rerun()
-    
-    st.markdown("---")
 
 if client:
     try:
@@ -336,23 +192,21 @@ if client:
         contests = load_contest_data()
         winners, winner_sheet_name = load_winner_data()
        
-        # Display loading status in sidebar
-        with st.sidebar:
-            if not contests.empty:
-                st.success(f"✅ {len(contests)} contests loaded")
-            if not winners.empty:
-                st.success(f"✅ {len(winners)} winners loaded")
+        if not contests.empty:
+            st.sidebar.success(f"✅ {len(contests)} contests loaded")
+        if not winners.empty:
+            st.sidebar.success(f"✅ {len(winners)} winners loaded")
        
         # Process contest data
         if not contests.empty:
             # Find important columns
-            camp_name_col = find_column(contests, ['Camp Name', 'Campaign Name', 'Camp Description', 'Camp', 'Camp Name '])
-            camp_type_col = find_column(contests, ['Camp Type', 'Type', 'Category', 'Camp Type '])
-            start_date_col = find_column(contests, ['Start Date', 'StartDate', 'Start', 'Start Date '])
-            end_date_col = find_column(contests, ['End Date', 'EndDate', 'End', 'End Date '])
-            winner_date_col = find_column(contests, ['Winner Announcement Date', 'Winner Date', 'Announcement Date', 'Winner Announcement Date '])
-            kam_col = find_column(contests, ['KAM', 'Owner', 'Manager', 'Responsible', 'KAM '])
-            to_whom_col = find_column(contests, ['To Whom?', 'To Whom', 'Assigned To', 'Team', 'To Whom? '])
+            camp_name_col = find_column(contests, ['Camp Name', 'Campaign Name', 'Camp Description', 'Camp'])
+            camp_type_col = find_column(contests, ['Camp Type', 'Type', 'Category'])
+            start_date_col = find_column(contests, ['Start Date', 'StartDate', 'Start'])
+            end_date_col = find_column(contests, ['End Date', 'EndDate', 'End'])
+            winner_date_col = find_column(contests, ['Winner Announcement Date', 'Winner Date', 'Announcement Date'])
+            kam_col = find_column(contests, ['KAM', 'Owner', 'Manager', 'Responsible'])
+            to_whom_col = find_column(contests, ['To Whom?', 'To Whom', 'Assigned To', 'Team'])
            
             # Fix dates safely
             if start_date_col:
@@ -385,7 +239,7 @@ if client:
         # ============================================
         # CONTEST DASHBOARD SECTION
         # ============================================
-        if st.session_state.current_section == "🎯 Contest Dashboard":
+        if section == "🎯 Contest Dashboard":
             st.header("📊 Contest Dashboard")
            
             if not contests.empty and start_date_col and end_date_col:
@@ -412,7 +266,7 @@ if client:
                 # Upcoming contests (this month)
                 upcoming_this_month = contests[
                     (contests[start_date_col].dt.date > today) &
-                    (contests['Year'] == current_year) &
+                    (contests['Year' ] == current_year) &
                     (contests['Month_Num'] == current_month)
                 ]
                
@@ -422,8 +276,7 @@ if client:
                     (contests[end_date_col].dt.date >= (today - timedelta(days=7)))
                 ]
                
-                # Display stats in columns with better styling
-                st.markdown('<div class="stMetric">', unsafe_allow_html=True)
+                # Display stats in columns
                 col1, col2, col3, col4 = st.columns(4)
                
                 with col1:
@@ -437,12 +290,10 @@ if client:
                
                 with col4:
                     st.metric("Ended Last 7 Days", len(recently_ended))
-                st.markdown('</div>', unsafe_allow_html=True)
                
                 # ============================================
                 # ONGOING CONTESTS
                 # ============================================
-                st.markdown("---")
                 if not running_contests.empty:
                     st.subheader("🏃 Currently Running Contests")
                     st.info(f"**Active now: {len(running_contests)} contest(s)**")
@@ -496,7 +347,6 @@ if client:
                 # ============================================
                 # UPCOMING CONTESTS
                 # ============================================
-                st.markdown("---")
                 if not upcoming_this_month.empty:
                     st.subheader("📅 Upcoming Contests (This Month)")
                     st.info(f"**Scheduled: {len(upcoming_this_month)} contest(s) this month**")
@@ -535,7 +385,6 @@ if client:
                 # ============================================
                 # RECENTLY ENDED CONTESTS
                 # ============================================
-                st.markdown("---")
                 if not recently_ended.empty:
                     st.subheader("✅ Recently Ended Contests (Last 7 Days)")
                    
@@ -549,16 +398,15 @@ if client:
                            
                             st.markdown(f"""
                             <div style="
-                                background: linear-gradient(135deg, #f0f2f6 0%, #e0e4e8 100%);
+                                background: #f0f2f6;
                                 border-radius: 8px;
                                 padding: 15px;
                                 margin: 5px 0;
                                 border-left: 4px solid #764ba2;
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                             ">
-                                <strong style="color: #333;">{camp_name}</strong><br>
-                                <small style="color: #666;">Type: {camp_type}</small><br>
-                                <small style="color: #666;">Ended: {end_date}</small>
+                                <strong>{camp_name}</strong><br>
+                                <small>Type: {camp_type}</small><br>
+                                <small>Ended: {end_date}</small>
                             </div>
                             """, unsafe_allow_html=True)
                 else:
@@ -568,7 +416,7 @@ if client:
         # ============================================
         # FILTER CONTESTS SECTION
         # ============================================
-        elif st.session_state.current_section == "🔍 Filter Contests":
+        elif section == "🔍 Filter Contests":
             st.header("🔍 Filter Contests")
            
             if not contests.empty:
@@ -747,7 +595,7 @@ if client:
         # ============================================
         # CHECK WINNERS SECTION
         # ============================================
-        elif st.session_state.current_section == "🏆 Check Winners":
+        elif section == "🏆 Check Winners":
             st.header("🏆 Check Winners")
            
             if not winners.empty and winner_sheet_name:
@@ -820,30 +668,13 @@ if client:
                 # Winner search section
                 st.subheader("🔍 Search Winner")
                 
-                # Create a visually distinct container for the search section
-                with st.container():
-                    # Use columns for better layout
-                    search_col1, search_col2 = st.columns([3, 2])
-                    
-                    with search_col1:
-                        search_option = st.radio(
-                            "Search by:",
-                            ["BZID", "Phone Number", "Customer Name"],
-                            horizontal=True,
-                            key="winner_search_option"
-                        )
-                    
-                    with search_col2:
-                        # Show placeholder based on selection
-                        if search_option == "BZID":
-                            placeholder = "Enter BZID (e.g., BZID-1304114892)"
-                        elif search_option == "Phone Number":
-                            placeholder = "Enter phone number (e.g., 9709112026)"
-                        else:
-                            placeholder = "Enter customer name"
-                
-                # Search input box with better styling
-                st.markdown("### 🔎 Enter Search Value")
+                # Use radio buttons for search option
+                search_option = st.radio(
+                    "Search by:",
+                    ["BZID", "Phone Number", "Customer Name"],
+                    horizontal=True,
+                    key="winner_search_option"
+                )
                 
                 # Create a highlighted search area
                 with st.container():
@@ -873,82 +704,72 @@ if client:
                             )
                         with col2:
                             search_submitted = st.form_submit_button("🔍 Search", use_container_width=True)
-                    
-                    # Add visual separator
-                    st.markdown("---")
                 
                 # Process search
-                if search_input or search_submitted:
-                    if search_input and search_col in filtered_winners.columns:
-                        # Clean and search within filtered winners
-                        filtered_winners[search_col] = filtered_winners[search_col].astype(str).fillna('')
-                        results = filtered_winners[filtered_winners[search_col].str.contains(search_input.strip(), case=False, na=False)]
+                if search_input and search_col in filtered_winners.columns:
+                    # Clean and search within filtered winners
+                    filtered_winners[search_col] = filtered_winners[search_col].astype(str).fillna('')
+                    results = filtered_winners[filtered_winners[search_col].str.contains(search_input.strip(), case=False, na=False)]
+                   
+                    if not results.empty:
+                        st.success(f"✅ Found {len(results)} winner(s) in selected date range")
                        
-                        if not results.empty:
-                            st.success(f"✅ Found {len(results)} winner(s) in selected date range")
+                        # Group by customer to show all contests they won
+                        if 'customer_firstname' in results.columns and 'businessid' in results.columns:
+                            grouped_results = results.groupby(['customer_firstname', 'businessid'])
                            
-                            # Group by customer to show all contests they won
-                            if 'customer_firstname' in results.columns and 'businessid' in results.columns:
-                                grouped_results = results.groupby(['customer_firstname', 'businessid'])
-                               
-                                for (cust_name, bzid), group in grouped_results:
-                                    with st.expander(f"👤 {cust_name} (BZID: {bzid}) - {len(group)} win(s)", expanded=True):
-                                        for idx, (_, row) in enumerate(group.iterrows()):
-                                            st.markdown(f"---")
-                                            st.markdown(f"**Win #{idx+1}**")
+                            for (cust_name, bzid), group in grouped_results:
+                                with st.expander(f"👤 {cust_name} (BZID: {bzid}) - {len(group)} win(s)", expanded=True):
+                                    for idx, (_, row) in enumerate(group.iterrows()):
+                                        st.markdown(f"---")
+                                        st.markdown(f"**Win #{idx+1}**")
+                                       
+                                        col1, col2 = st.columns([2, 1])
+                                       
+                                        with col1:
+                                            # Contest Details
+                                            camp_desc = str(row.get('Camp Description', 'N/A')).strip()
+                                            contest_eligibility = str(row.get('Contest', 'N/A')).strip()
+                                            gift = str(row.get('Gift', 'N/A')).strip()
                                            
-                                            col1, col2 = st.columns([2, 1])
+                                            # Get dates from winner data
+                                            start_date_val = row.get('Start Date', None)
+                                            end_date_val = row.get('End Date', None)
                                            
-                                            with col1:
-                                                # Contest Details
-                                                camp_desc = str(row.get('Camp Description', 'N/A')).strip()
-                                                contest_eligibility = str(row.get('Contest', 'N/A')).strip()
-                                                gift = str(row.get('Gift', 'N/A')).strip()
-                                               
-                                                # Get dates from winner data
-                                                start_date_val = row.get('Start Date', None)
-                                                end_date_val = row.get('End Date', None)
-                                               
-                                                # Format dates
-                                                start_date_str = 'N/A'
-                                                end_date_str = 'N/A'
-                                               
-                                                if pd.notna(start_date_val):
-                                                    if hasattr(start_date_val, 'strftime'):
-                                                        start_date_str = start_date_val.strftime('%d-%m-%Y')
-                                                    else:
-                                                        start_date_str = str(start_date_val)
-                                               
-                                                if pd.notna(end_date_val):
-                                                    if hasattr(end_date_val, 'strftime'):
-                                                        end_date_str = end_date_val.strftime('%d-%m-%Y')
-                                                    else:
-                                                        end_date_str = str(end_date_val)
-                                               
-                                                st.markdown(f"""
-                                                **Camp Description:** {camp_desc}  
-                                                **Eligibility:** {contest_eligibility}  
-                                                **Prize:** {gift}  
-                                                **Contest Duration:** {start_date_str} to {end_date_str}
-                                                """)
+                                            # Format dates
+                                            start_date_str = 'N/A'
+                                            end_date_str = 'N/A'
                                            
-                                            with col2:
-                                                # Winner Details
-                                                st.markdown(f"""
-                                                **Name:** {row.get('customer_firstname', 'N/A')}  
-                                                **Phone:** {row.get('customer_phonenumber', 'N/A')}  
-                                                **Store:** {row.get('business_displayname', 'N/A')}  
-                                                **BZID:** {row.get('businessid', 'N/A')}  
-                                                **Winner Date:** {row.get('Winner Announcement Date', 'N/A')}
-                                                """)
-                        else:
-                            st.warning("⚠️ No winners found for the search criteria in selected date range")
-                           
-                            # Show suggestions for better search
-                            if search_option == "BZID":
-                                st.info("💡 Tip: Try searching without 'BZID-' prefix. For example, search '1304114892' instead of 'BZID-1304114892'")
-                            elif search_option == "Phone Number":
-                                st.info("💡 Tip: Make sure to enter the complete 10-digit phone number")
+                                            if pd.notna(start_date_val):
+                                                if hasattr(start_date_val, 'strftime'):
+                                                    start_date_str = start_date_val.strftime('%d-%m-%Y')
+                                                else:
+                                                    start_date_str = str(start_date_val)
+                                           
+                                            if pd.notna(end_date_val):
+                                                if hasattr(end_date_val, 'strftime'):
+                                                    end_date_str = end_date_val.strftime('%d-%m-%Y')
+                                                else:
+                                                    end_date_str = str(end_date_val)
+                                           
+                                            st.markdown(f"""
+                                            **Camp Description:** {camp_desc}  
+                                            **Eligibility:** {contest_eligibility}  
+                                            **Prize:** {gift}  
+                                            **Contest Duration:** {start_date_str} to {end_date_str}
+                                            """)
+                                       
+                                        with col2:
+                                            # Winner Details
+                                            st.markdown(f"""
+                                            **Name:** {row.get('customer_firstname', 'N/A')}  
+                                            **Phone:** {row.get('customer_phonenumber', 'N/A')}  
+                                            **Store:** {row.get('business_displayname', 'N/A')}  
+                                            **BZID:** {row.get('businessid', 'N/A')}  
+                                            **Winner Date:** {row.get('Winner Announcement Date', 'N/A')}
+                                            """)
+                    else:
+                        st.warning("⚠️ No winners found for the search criteria in selected date range")
                 else:
                     st.info("👆 Enter search criteria above to find winners within selected date range")
                    
@@ -974,12 +795,11 @@ else:
     st.error("Connection failed")
 
 # ============================================
-# FOOTER in sidebar
+# FOOTER
 # ============================================
-with st.sidebar:
-    st.markdown("---")
-    st.caption(f"**Last updated:** {datetime.now().strftime('%d %b %Y %H:%M')}")
-    
-    if st.button("🔄 Refresh Data", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
+st.sidebar.markdown("---")
+st.sidebar.caption(f"Last updated: {datetime.now().strftime('%d %b %Y %H:%M')}")
+
+if st.sidebar.button("🔄 Refresh Data"):
+    st.cache_data.clear()
+    st.rerun()
