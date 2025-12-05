@@ -119,7 +119,7 @@ if 'current_section' not in st.session_state:
 
 # App
 st.set_page_config(page_title="Contest Check", layout="wide")
-st.title("🎯 Contest Checker")
+st.title("🎯 Jumbotail Contest Details Dashboard")
 st.markdown("---")
 
 # Create navigation menu with radio buttons
