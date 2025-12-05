@@ -142,6 +142,14 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
 if 'current_section' not in st.session_state:
     st.session_state.current_section = "🎯 Contest Dashboard"
 
+# Initialize checkbox states
+if 'nav_dashboard' not in st.session_state:
+    st.session_state.nav_dashboard = True
+if 'nav_filter' not in st.session_state:
+    st.session_state.nav_filter = False
+if 'nav_winners' not in st.session_state:
+    st.session_state.nav_winners = False
+
 # App
 st.set_page_config(page_title="Contest Check", layout="wide", page_icon="🏆")
 st.title("🏆 Contest Checker")
@@ -259,44 +267,43 @@ with st.sidebar:
     # Create checkboxes for navigation
     contest_dashboard = st.checkbox(
         "🎯 Contest Dashboard", 
-        value=(st.session_state.current_section == "🎯 Contest Dashboard"),
-        key="nav_dashboard"
+        value=st.session_state.nav_dashboard,
+        key="nav_dashboard_checkbox"
     )
     
     filter_contests = st.checkbox(
         "🔍 Filter Contests", 
-        value=(st.session_state.current_section == "🔍 Filter Contests"),
-        key="nav_filter"
+        value=st.session_state.nav_filter,
+        key="nav_filter_checkbox"
     )
     
     check_winners = st.checkbox(
         "🏆 Check Winners", 
-        value=(st.session_state.current_section == "🏆 Check Winners"),
-        key="nav_winners"
+        value=st.session_state.nav_winners,
+        key="nav_winners_checkbox"
     )
     
-    # Determine which section to show based on checkboxes
-    if contest_dashboard:
+    # Update session state based on checkbox interactions
+    if contest_dashboard and not st.session_state.nav_dashboard:
         st.session_state.current_section = "🎯 Contest Dashboard"
-        # Uncheck others
-        if 'nav_filter' in st.session_state:
-            st.session_state.nav_filter = False
-        if 'nav_winners' in st.session_state:
-            st.session_state.nav_winners = False
-    elif filter_contests:
+        st.session_state.nav_dashboard = True
+        st.session_state.nav_filter = False
+        st.session_state.nav_winners = False
+        st.rerun()
+    
+    if filter_contests and not st.session_state.nav_filter:
         st.session_state.current_section = "🔍 Filter Contests"
-        # Uncheck others
-        if 'nav_dashboard' in st.session_state:
-            st.session_state.nav_dashboard = False
-        if 'nav_winners' in st.session_state:
-            st.session_state.nav_winners = False
-    elif check_winners:
+        st.session_state.nav_dashboard = False
+        st.session_state.nav_filter = True
+        st.session_state.nav_winners = False
+        st.rerun()
+    
+    if check_winners and not st.session_state.nav_winners:
         st.session_state.current_section = "🏆 Check Winners"
-        # Uncheck others
-        if 'nav_dashboard' in st.session_state:
-            st.session_state.nav_dashboard = False
-        if 'nav_filter' in st.session_state:
-            st.session_state.nav_filter = False
+        st.session_state.nav_dashboard = False
+        st.session_state.nav_filter = False
+        st.session_state.nav_winners = True
+        st.rerun()
     
     st.markdown("---")
 
