@@ -32,9 +32,28 @@ def safe_to_datetime(series):
     except:
         return pd.NaT
 
+# Function to determine contest status
+def get_contest_status(start_date, end_date, today):
+    """Determine if contest is upcoming, running, or past"""
+    try:
+        if pd.isna(start_date) or pd.isna(end_date):
+            return 'unknown'
+        
+        start_date_obj = start_date.date() if hasattr(start_date, 'date') else pd.to_datetime(start_date).date()
+        end_date_obj = end_date.date() if hasattr(end_date, 'date') else pd.to_datetime(end_date).date()
+        
+        if start_date_obj > today:
+            return 'upcoming'
+        elif start_date_obj <= today <= end_date_obj:
+            return 'running'
+        else:
+            return 'past'
+    except:
+        return 'unknown'
+
 # Function to create nice contest cards
 def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_date_col,
-                       winner_date_col, kam_col, to_whom_col, eligibility_col, is_running=False):
+                       winner_date_col, kam_col, to_whom_col, eligibility_col, status):
     """Create a nice looking contest card"""
     camp_name = row[camp_name_col] if camp_name_col and camp_name_col in row and pd.notna(row[camp_name_col]) else 'N/A'
     camp_type = row[camp_type_col] if camp_type_col and camp_type_col in row and pd.notna(row[camp_type_col]) else 'N/A'
@@ -68,7 +87,7 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
    
     # Calculate days left if contest is running
     days_left = ""
-    if is_running and end_date_col and end_date_col in row and pd.notna(row[end_date_col]):
+    if status == 'running' and end_date_col and end_date_col in row and pd.notna(row[end_date_col]):
         if hasattr(row[end_date_col], 'date'):
             end_date_obj = row[end_date_col].date()
             today = datetime.now().date()
@@ -76,13 +95,16 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
             if days_left_int >= 0:
                 days_left = f"<br><strong>⏳ Days Left:</strong> {days_left_int} days"
    
-    # Different gradient for running contests
-    if is_running:
+    # Different styles based on status
+    if status == 'running':
         gradient = "linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%)"  # Green for running
         badge = "🏃 RUNNING NOW"
-    else:
+    elif status == 'upcoming':
         gradient = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"  # Purple for upcoming
         badge = "📅 UPCOMING"
+    else:  # past or unknown
+        gradient = "linear-gradient(135deg, #9e9e9e 0%, #616161 100%)"  # Grey for past
+        badge = "✅ COMPLETED"
    
     # Create card with contest eligibility
     card_html = f"""
@@ -262,22 +284,20 @@ if client:
                     (contests['Month_Num'] == current_month)
                 ]
                
-                # Running contests
-                running_contests = contests[
-                    (contests[start_date_col].dt.date <= today) &
-                    (contests[end_date_col].dt.date >= today)
-                ]
+                # Calculate contest status for all contests
+                contests['Status'] = contests.apply(
+                    lambda row: get_contest_status(row[start_date_col], row[end_date_col], today), 
+                    axis=1
+                )
                
-                # Upcoming contests (this month)
-                upcoming_this_month = contests[
-                    (contests[start_date_col].dt.date > today) &
-                    (contests['Year'] == current_year) &
-                    (contests['Month_Num'] == current_month)
-                ]
+                # Get contests by status
+                running_contests = contests[contests['Status'] == 'running']
+                upcoming_contests = contests[contests['Status'] == 'upcoming']
+                past_contests = contests[contests['Status'] == 'past']
                
                 # Recently ended (last 7 days)
                 recently_ended = contests[
-                    (contests[end_date_col].dt.date < today) &
+                    (contests['Status'] == 'past') &
                     (contests[end_date_col].dt.date >= (today - timedelta(days=7)))
                 ]
                
@@ -291,10 +311,10 @@ if client:
                     st.metric("Running Now", len(running_contests))
                
                 with col3:
-                    st.metric("Upcoming This Month", len(upcoming_this_month))
+                    st.metric("Upcoming", len(upcoming_contests))
                
                 with col4:
-                    st.metric("Ended Last 7 Days", len(recently_ended))
+                    st.metric("Past/Completed", len(past_contests))
                
                 # ============================================
                 # ONGOING CONTESTS
@@ -342,7 +362,7 @@ if client:
                     for _, row in running_contests.iterrows():
                         card_html = create_contest_card(
                             row, camp_name_col, camp_type_col, start_date_col, end_date_col,
-                            winner_date_col, kam_col, to_whom_col, eligibility_col, is_running=True
+                            winner_date_col, kam_col, to_whom_col, eligibility_col, status='running'
                         )
                         st.markdown(card_html, unsafe_allow_html=True)
                 else:
@@ -352,40 +372,52 @@ if client:
                 # ============================================
                 # UPCOMING CONTESTS
                 # ============================================
-                if not upcoming_this_month.empty:
-                    st.subheader("📅 Upcoming Contests (This Month)")
-                    st.info(f"**Scheduled: {len(upcoming_this_month)} contest(s) this month**")
+                if not upcoming_contests.empty:
+                    st.subheader("📅 Upcoming Contests")
+                    st.info(f"**Scheduled: {len(upcoming_contests)} contest(s)**")
                    
-                    # Show stats for upcoming contests
-                    up_stats_col1, up_stats_col2 = st.columns(2)
-                   
-                    with up_stats_col1:
-                        # Days to next contest
-                        try:
-                            next_contest_date = upcoming_this_month[start_date_col].min().date()
-                            days_to_next = (next_contest_date - today).days
-                            st.metric("Days to Next Contest", days_to_next if days_to_next > 0 else 0)
-                        except:
-                            st.metric("Days to Next Contest", "N/A")
-                   
-                    with up_stats_col2:
-                        # Contest eligibilities in upcoming
-                        if eligibility_col and eligibility_col in upcoming_this_month.columns:
-                            upcoming_eligibilities = upcoming_this_month[eligibility_col].nunique()
-                            st.metric("Eligibility Types", upcoming_eligibilities)
-                   
-                    st.markdown("---")
-                   
-                    # Show upcoming contest cards
-                    for _, row in upcoming_this_month.iterrows():
-                        card_html = create_contest_card(
-                            row, camp_name_col, camp_type_col, start_date_col, end_date_col,
-                            winner_date_col, kam_col, to_whom_col, eligibility_col, is_running=False
-                        )
-                        st.markdown(card_html, unsafe_allow_html=True)
+                    # Group by month for better organization
+                    upcoming_contests['Month_Year'] = upcoming_contests[start_date_col].dt.strftime('%B %Y')
+                    months_sorted = sorted(upcoming_contests['Month_Year'].unique(), 
+                                          key=lambda x: datetime.strptime(x, '%B %Y'))
+                    
+                    for month_year in months_sorted:
+                        month_contests = upcoming_contests[upcoming_contests['Month_Year'] == month_year]
+                        
+                        st.markdown(f"### 📅 {month_year}")
+                        
+                        # Show stats for this month's contests
+                        up_stats_col1, up_stats_col2 = st.columns(2)
+                        
+                        with up_stats_col1:
+                            # Days to next contest in this month
+                            try:
+                                next_contest_date = month_contests[start_date_col].min().date()
+                                days_to_next = (next_contest_date - today).days
+                                st.metric("Days to First Contest", days_to_next if days_to_next > 0 else 0)
+                            except:
+                                st.metric("Days to First Contest", "N/A")
+                        
+                        with up_stats_col2:
+                            # Contest eligibilities in this month
+                            if eligibility_col and eligibility_col in month_contests.columns:
+                                upcoming_eligibilities = month_contests[eligibility_col].nunique()
+                                st.metric("Eligibility Types", upcoming_eligibilities)
+                        
+                        st.markdown("---")
+                        
+                        # Show this month's contest cards
+                        for _, row in month_contests.iterrows():
+                            card_html = create_contest_card(
+                                row, camp_name_col, camp_type_col, start_date_col, end_date_col,
+                                winner_date_col, kam_col, to_whom_col, eligibility_col, status='upcoming'
+                            )
+                            st.markdown(card_html, unsafe_allow_html=True)
+                        
+                        st.markdown("<br>", unsafe_allow_html=True)
                 else:
-                    st.subheader("📅 Upcoming Contests (This Month)")
-                    st.info("📭 No upcoming contests this month")
+                    st.subheader("📅 Upcoming Contests")
+                    st.info("📭 No upcoming contests")
                
                 # ============================================
                 # RECENTLY ENDED CONTESTS
@@ -522,22 +554,22 @@ if client:
                 st.subheader(f"📊 Results: {len(filtered_contests)} contests found")
                
                 if not filtered_contests.empty:
+                    # Calculate status for filtered contests
+                    filtered_contests['Status'] = filtered_contests.apply(
+                        lambda row: get_contest_status(row[start_date_col], row[end_date_col], today), 
+                        axis=1
+                    )
+                    
                     # Stats
                     col1, col2, col3 = st.columns(3)
                     with col1:
                         st.metric("Total Contests", len(filtered_contests))
                     with col2:
-                        if camp_type_col and camp_type_col in filtered_contests.columns:
-                            unique_types = filtered_contests[camp_type_col].nunique()
-                            st.metric("Campaign Types", unique_types)
-                        else:
-                            st.metric("Campaign Types", "N/A")
+                        running_count = len(filtered_contests[filtered_contests['Status'] == 'running'])
+                        st.metric("Running", running_count)
                     with col3:
-                        if kam_col and kam_col in filtered_contests.columns:
-                            unique_kams = filtered_contests[kam_col].nunique()
-                            st.metric("KAMs Involved", unique_kams)
-                        else:
-                            st.metric("KAMs Involved", "N/A")
+                        upcoming_count = len(filtered_contests[filtered_contests['Status'] == 'upcoming'])
+                        st.metric("Upcoming", upcoming_count)
                    
                     # Show as cards or table based on toggle
                     view_mode = st.radio("View Mode:", ["Cards View", "Table View"], horizontal=True, key="contest_view")
@@ -545,20 +577,9 @@ if client:
                     if view_mode == "Cards View":
                         st.markdown("---")
                         for _, row in filtered_contests.iterrows():
-                            # Check if contest is currently running
-                            is_running = False
-                            if start_date_col and end_date_col:
-                                try:
-                                    start_dt = row[start_date_col].date() if hasattr(row[start_date_col], 'date') else None
-                                    end_dt = row[end_date_col].date() if hasattr(row[end_date_col], 'date') else None
-                                    if start_dt and end_dt and start_dt <= today <= end_dt:
-                                        is_running = True
-                                except:
-                                    pass
-                           
                             card_html = create_contest_card(
                                 row, camp_name_col, camp_type_col, start_date_col, end_date_col,
-                                winner_date_col, kam_col, to_whom_col, eligibility_col, is_running=is_running
+                                winner_date_col, kam_col, to_whom_col, eligibility_col, status=row['Status']
                             )
                             st.markdown(card_html, unsafe_allow_html=True)
                     else:
@@ -574,7 +595,7 @@ if client:
                         if to_whom_col: display_cols.append(to_whom_col)
                        
                         if display_cols:
-                            display_df = filtered_contests[display_cols].copy()
+                            display_df = filtered_contests[display_cols + ['Status']].copy()
                            
                             # Format dates
                             for date_col in [start_date_col, end_date_col, winner_date_col]:
@@ -585,7 +606,7 @@ if client:
                    
                     # Download button
                     if display_cols:
-                        csv = filtered_contests[display_cols].to_csv(index=False).encode('utf-8')
+                        csv = filtered_contests[display_cols + ['Status']].to_csv(index=False).encode('utf-8')
                         st.download_button(
                             "📥 Download Results",
                             csv,
