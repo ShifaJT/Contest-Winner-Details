@@ -34,10 +34,13 @@ def safe_to_datetime(series):
 
 # Function to create nice contest cards
 def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_date_col,
-                       winner_date_col, kam_col, to_whom_col, is_running=False):
+                       winner_date_col, kam_col, to_whom_col, eligibility_col, is_running=False):
     """Create a nice looking contest card"""
     camp_name = row[camp_name_col] if camp_name_col and camp_name_col in row and pd.notna(row[camp_name_col]) else 'N/A'
     camp_type = row[camp_type_col] if camp_type_col and camp_type_col in row and pd.notna(row[camp_type_col]) else 'N/A'
+    
+    # Get contest eligibility
+    contest_eligibility = row[eligibility_col] if eligibility_col and eligibility_col in row and pd.notna(row[eligibility_col]) else 'N/A'
    
     start_date = 'N/A'
     if start_date_col and start_date_col in row and pd.notna(row[start_date_col]):
@@ -81,7 +84,7 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
         gradient = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"  # Purple for upcoming
         badge = "📅 UPCOMING"
    
-    # Create card
+    # Create card with contest eligibility
     card_html = f"""
     <div style="
         background: {gradient};
@@ -99,6 +102,7 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <div>
                 <strong>🎯 Type:</strong> {camp_type}<br>
+                <strong>📋 Eligibility:</strong> {contest_eligibility}<br>
                 <strong>👤 KAM:</strong> {kam}<br>
                 <strong>👥 Team:</strong> {to_whom}
             </div>
@@ -207,6 +211,7 @@ if client:
             winner_date_col = find_column(contests, ['Winner Announcement Date', 'Winner Date', 'Announcement Date'])
             kam_col = find_column(contests, ['KAM', 'Owner', 'Manager', 'Responsible'])
             to_whom_col = find_column(contests, ['To Whom?', 'To Whom', 'Assigned To', 'Team'])
+            eligibility_col = find_column(contests, ['Contest Eligiblity', 'Contest Eligibility', 'Eligibility', 'Contest Eligiblity '])
            
             # Fix dates safely
             if start_date_col:
@@ -266,7 +271,7 @@ if client:
                 # Upcoming contests (this month)
                 upcoming_this_month = contests[
                     (contests[start_date_col].dt.date > today) &
-                    (contests['Year' ] == current_year) &
+                    (contests['Year'] == current_year) &
                     (contests['Month_Num'] == current_month)
                 ]
                
@@ -307,9 +312,9 @@ if client:
                             st.metric("Campaign Types", running_types)
                    
                     with stats_col2:
-                        if kam_col and kam_col in running_contests.columns:
-                            running_kams = running_contests[kam_col].nunique()
-                            st.metric("Active KAMs", running_kams)
+                        if eligibility_col and eligibility_col in running_contests.columns:
+                            running_eligibilities = running_contests[eligibility_col].nunique()
+                            st.metric("Eligibility Types", running_eligibilities)
                    
                     with stats_col3:
                         # Calculate average days left
@@ -337,7 +342,7 @@ if client:
                     for _, row in running_contests.iterrows():
                         card_html = create_contest_card(
                             row, camp_name_col, camp_type_col, start_date_col, end_date_col,
-                            winner_date_col, kam_col, to_whom_col, is_running=True
+                            winner_date_col, kam_col, to_whom_col, eligibility_col, is_running=True
                         )
                         st.markdown(card_html, unsafe_allow_html=True)
                 else:
@@ -364,10 +369,10 @@ if client:
                             st.metric("Days to Next Contest", "N/A")
                    
                     with up_stats_col2:
-                        # Contest types in upcoming
-                        if camp_type_col and camp_type_col in upcoming_this_month.columns:
-                            upcoming_types = upcoming_this_month[camp_type_col].nunique()
-                            st.metric("Upcoming Types", upcoming_types)
+                        # Contest eligibilities in upcoming
+                        if eligibility_col and eligibility_col in upcoming_this_month.columns:
+                            upcoming_eligibilities = upcoming_this_month[eligibility_col].nunique()
+                            st.metric("Eligibility Types", upcoming_eligibilities)
                    
                     st.markdown("---")
                    
@@ -375,7 +380,7 @@ if client:
                     for _, row in upcoming_this_month.iterrows():
                         card_html = create_contest_card(
                             row, camp_name_col, camp_type_col, start_date_col, end_date_col,
-                            winner_date_col, kam_col, to_whom_col, is_running=False
+                            winner_date_col, kam_col, to_whom_col, eligibility_col, is_running=False
                         )
                         st.markdown(card_html, unsafe_allow_html=True)
                 else:
@@ -553,7 +558,7 @@ if client:
                            
                             card_html = create_contest_card(
                                 row, camp_name_col, camp_type_col, start_date_col, end_date_col,
-                                winner_date_col, kam_col, to_whom_col, is_running=is_running
+                                winner_date_col, kam_col, to_whom_col, eligibility_col, is_running=is_running
                             )
                             st.markdown(card_html, unsafe_allow_html=True)
                     else:
@@ -561,6 +566,7 @@ if client:
                         display_cols = []
                         if camp_name_col: display_cols.append(camp_name_col)
                         if camp_type_col: display_cols.append(camp_type_col)
+                        if eligibility_col: display_cols.append(eligibility_col)
                         if start_date_col: display_cols.append(start_date_col)
                         if end_date_col: display_cols.append(end_date_col)
                         if winner_date_col: display_cols.append(winner_date_col)
