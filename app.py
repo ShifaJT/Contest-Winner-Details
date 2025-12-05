@@ -77,32 +77,57 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
     if is_running:
         gradient = "linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%)"  # Green for running
         badge = "🏃 RUNNING NOW"
+        badge_bg = "#2E7D32"
     else:
         gradient = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"  # Purple for upcoming
         badge = "📅 UPCOMING"
+        badge_bg = "#764ba2"
    
-    # Create card
+    # Create card - improved layout
     card_html = f"""
     <div style="
         background: {gradient};
         border-radius: 10px;
         padding: 20px;
-        margin: 10px 0;
+        margin: 15px 0;
         color: white;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
         position: relative;
+        border: 1px solid rgba(255, 255, 255, 0.2);
     ">
-        <div style="position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 12px; font-size: 12px;">
+        <div style="
+            position: absolute; 
+            top: 12px; 
+            right: 12px; 
+            background: {badge_bg};
+            padding: 4px 12px; 
+            border-radius: 15px; 
+            font-size: 11px;
+            font-weight: bold;
+            color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        ">
             {badge}
         </div>
-        <h3 style="margin: 0 0 10px 0; color: white; padding-right: 80px;">{camp_name}</h3>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-            <div>
+        <h3 style="
+            margin: 0 0 15px 0; 
+            color: white; 
+            padding-right: 100px;
+            font-size: 18px;
+            font-weight: 600;
+        ">{camp_name}</h3>
+        <div style="
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 12px;
+            font-size: 14px;
+        ">
+            <div style="line-height: 1.6;">
                 <strong>🎯 Type:</strong> {camp_type}<br>
                 <strong>👤 KAM:</strong> {kam}<br>
                 <strong>👥 Team:</strong> {to_whom}
             </div>
-            <div>
+            <div style="line-height: 1.6;">
                 <strong>📅 Starts:</strong> {start_date}<br>
                 <strong>🏁 Ends:</strong> {end_date}<br>
                 <strong>🏆 Winner Date:</strong> {winner_date}
@@ -113,24 +138,167 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
     """
     return card_html
 
-# Initialize session state
+# Initialize session state for navigation
 if 'current_section' not in st.session_state:
     st.session_state.current_section = "🎯 Contest Dashboard"
 
 # App
-st.set_page_config(page_title="Contest Check", layout="wide")
-st.title("🎯 Contest Checker")
+st.set_page_config(page_title="Contest Check", layout="wide", page_icon="🏆")
+st.title("🏆 Contest Checker")
 st.markdown("---")
-
-# Create navigation menu
-st.sidebar.title("📊 Navigation")
-section = st.sidebar.radio(
-    "Go to:",
-    ["🎯 Contest Dashboard", "🔍 Filter Contests", "🏆 Check Winners"]
-)
 
 # Connect to Google Sheets
 client = connect_sheets()
+
+# Custom CSS for better styling
+st.markdown("""
+<style>
+    /* Main container styling */
+    .main .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
+    
+    /* Sidebar styling */
+    section[data-testid="stSidebar"] {
+        background-color: #f8f9fa;
+        padding: 20px;
+    }
+    
+    /* Checkbox styling for navigation */
+    .stCheckbox > label {
+        font-size: 16px;
+        font-weight: 500;
+        padding: 8px 0;
+        cursor: pointer;
+    }
+    
+    .stCheckbox > label > div:first-child {
+        margin-right: 10px;
+    }
+    
+    /* Selected checkbox styling */
+    .stCheckbox > label[data-checked="true"] {
+        color: #1E88E5;
+        font-weight: 600;
+    }
+    
+    /* Card hover effects */
+    .stMarkdown div[style*="linear-gradient"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+        transition: all 0.3s ease;
+    }
+    
+    /* Metric cards styling */
+    .stMetric {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 10px;
+        padding: 20px;
+        color: white;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .stMetric label {
+        color: white !important;
+        font-weight: 500 !important;
+    }
+    
+    .stMetric div {
+        color: white !important;
+        font-size: 24px !important;
+        font-weight: 600 !important;
+    }
+    
+    /* Button styling */
+    .stButton button {
+        background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        font-weight: 500;
+        width: 100%;
+    }
+    
+    .stButton button:hover {
+        background: linear-gradient(135deg, #43A047 0%, #1B5E20 100%);
+        color: white;
+    }
+    
+    /* Radio button styling */
+    .stRadio > div {
+        background: #f8f9fa;
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid #dee2e6;
+    }
+    
+    /* Text input styling */
+    .stTextInput > div > div > input {
+        border: 2px solid #667eea;
+        border-radius: 5px;
+        padding: 10px;
+    }
+    
+    /* Success messages */
+    .stAlert.stSuccess {
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+        color: #155724;
+        border-radius: 5px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Create navigation menu with checkboxes
+with st.sidebar:
+    st.markdown("### 📊 Navigation")
+    st.markdown("**Go to:**")
+    
+    # Create checkboxes for navigation
+    contest_dashboard = st.checkbox(
+        "🎯 Contest Dashboard", 
+        value=(st.session_state.current_section == "🎯 Contest Dashboard"),
+        key="nav_dashboard"
+    )
+    
+    filter_contests = st.checkbox(
+        "🔍 Filter Contests", 
+        value=(st.session_state.current_section == "🔍 Filter Contests"),
+        key="nav_filter"
+    )
+    
+    check_winners = st.checkbox(
+        "🏆 Check Winners", 
+        value=(st.session_state.current_section == "🏆 Check Winners"),
+        key="nav_winners"
+    )
+    
+    # Determine which section to show based on checkboxes
+    if contest_dashboard:
+        st.session_state.current_section = "🎯 Contest Dashboard"
+        # Uncheck others
+        if 'nav_filter' in st.session_state:
+            st.session_state.nav_filter = False
+        if 'nav_winners' in st.session_state:
+            st.session_state.nav_winners = False
+    elif filter_contests:
+        st.session_state.current_section = "🔍 Filter Contests"
+        # Uncheck others
+        if 'nav_dashboard' in st.session_state:
+            st.session_state.nav_dashboard = False
+        if 'nav_winners' in st.session_state:
+            st.session_state.nav_winners = False
+    elif check_winners:
+        st.session_state.current_section = "🏆 Check Winners"
+        # Uncheck others
+        if 'nav_dashboard' in st.session_state:
+            st.session_state.nav_dashboard = False
+        if 'nav_filter' in st.session_state:
+            st.session_state.nav_filter = False
+    
+    st.markdown("---")
 
 if client:
     try:
@@ -161,21 +329,23 @@ if client:
         contests = load_contest_data()
         winners, winner_sheet_name = load_winner_data()
        
-        if not contests.empty:
-            st.sidebar.success(f"✅ {len(contests)} contests loaded")
-        if not winners.empty:
-            st.sidebar.success(f"✅ {len(winners)} winners loaded")
+        # Display loading status in sidebar
+        with st.sidebar:
+            if not contests.empty:
+                st.success(f"✅ {len(contests)} contests loaded")
+            if not winners.empty:
+                st.success(f"✅ {len(winners)} winners loaded")
        
         # Process contest data
         if not contests.empty:
             # Find important columns
-            camp_name_col = find_column(contests, ['Camp Name', 'Campaign Name', 'Camp Description', 'Camp'])
-            camp_type_col = find_column(contests, ['Camp Type', 'Type', 'Category'])
-            start_date_col = find_column(contests, ['Start Date', 'StartDate', 'Start'])
-            end_date_col = find_column(contests, ['End Date', 'EndDate', 'End'])
-            winner_date_col = find_column(contests, ['Winner Announcement Date', 'Winner Date', 'Announcement Date'])
-            kam_col = find_column(contests, ['KAM', 'Owner', 'Manager', 'Responsible'])
-            to_whom_col = find_column(contests, ['To Whom?', 'To Whom', 'Assigned To', 'Team'])
+            camp_name_col = find_column(contests, ['Camp Name', 'Campaign Name', 'Camp Description', 'Camp', 'Camp Name '])
+            camp_type_col = find_column(contests, ['Camp Type', 'Type', 'Category', 'Camp Type '])
+            start_date_col = find_column(contests, ['Start Date', 'StartDate', 'Start', 'Start Date '])
+            end_date_col = find_column(contests, ['End Date', 'EndDate', 'End', 'End Date '])
+            winner_date_col = find_column(contests, ['Winner Announcement Date', 'Winner Date', 'Announcement Date', 'Winner Announcement Date '])
+            kam_col = find_column(contests, ['KAM', 'Owner', 'Manager', 'Responsible', 'KAM '])
+            to_whom_col = find_column(contests, ['To Whom?', 'To Whom', 'Assigned To', 'Team', 'To Whom? '])
            
             # Fix dates safely
             if start_date_col:
@@ -208,7 +378,7 @@ if client:
         # ============================================
         # CONTEST DASHBOARD SECTION
         # ============================================
-        if section == "🎯 Contest Dashboard":
+        if st.session_state.current_section == "🎯 Contest Dashboard":
             st.header("📊 Contest Dashboard")
            
             if not contests.empty and start_date_col and end_date_col:
@@ -245,7 +415,8 @@ if client:
                     (contests[end_date_col].dt.date >= (today - timedelta(days=7)))
                 ]
                
-                # Display stats in columns
+                # Display stats in columns with better styling
+                st.markdown('<div class="stMetric">', unsafe_allow_html=True)
                 col1, col2, col3, col4 = st.columns(4)
                
                 with col1:
@@ -259,10 +430,12 @@ if client:
                
                 with col4:
                     st.metric("Ended Last 7 Days", len(recently_ended))
+                st.markdown('</div>', unsafe_allow_html=True)
                
                 # ============================================
                 # ONGOING CONTESTS
                 # ============================================
+                st.markdown("---")
                 if not running_contests.empty:
                     st.subheader("🏃 Currently Running Contests")
                     st.info(f"**Active now: {len(running_contests)} contest(s)**")
@@ -316,6 +489,7 @@ if client:
                 # ============================================
                 # UPCOMING CONTESTS
                 # ============================================
+                st.markdown("---")
                 if not upcoming_this_month.empty:
                     st.subheader("📅 Upcoming Contests (This Month)")
                     st.info(f"**Scheduled: {len(upcoming_this_month)} contest(s) this month**")
@@ -354,6 +528,7 @@ if client:
                 # ============================================
                 # RECENTLY ENDED CONTESTS
                 # ============================================
+                st.markdown("---")
                 if not recently_ended.empty:
                     st.subheader("✅ Recently Ended Contests (Last 7 Days)")
                    
@@ -367,15 +542,16 @@ if client:
                            
                             st.markdown(f"""
                             <div style="
-                                background: #f0f2f6;
+                                background: linear-gradient(135deg, #f0f2f6 0%, #e0e4e8 100%);
                                 border-radius: 8px;
                                 padding: 15px;
                                 margin: 5px 0;
                                 border-left: 4px solid #764ba2;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                             ">
-                                <strong>{camp_name}</strong><br>
-                                <small>Type: {camp_type}</small><br>
-                                <small>Ended: {end_date}</small>
+                                <strong style="color: #333;">{camp_name}</strong><br>
+                                <small style="color: #666;">Type: {camp_type}</small><br>
+                                <small style="color: #666;">Ended: {end_date}</small>
                             </div>
                             """, unsafe_allow_html=True)
                 else:
@@ -385,7 +561,7 @@ if client:
         # ============================================
         # FILTER CONTESTS SECTION
         # ============================================
-        elif section == "🔍 Filter Contests":
+        elif st.session_state.current_section == "🔍 Filter Contests":
             st.header("🔍 Filter Contests")
            
             if not contests.empty:
@@ -562,9 +738,9 @@ if client:
                 st.warning("No contest data available")
        
         # ============================================
-        # CHECK WINNERS SECTION WITH DATE FILTER - FIXED VISIBILITY
+        # CHECK WINNERS SECTION
         # ============================================
-        elif section == "🏆 Check Winners":
+        elif st.session_state.current_section == "🏆 Check Winners":
             st.header("🏆 Check Winners")
            
             if not winners.empty and winner_sheet_name:
@@ -632,9 +808,9 @@ if client:
                     else:
                         st.metric("Unique Customers", 0)
                 
-                st.markdown("---")  # Add separator for better visibility
+                st.markdown("---")
                 
-                # Winner search section - FIXED VISIBILITY
+                # Winner search section
                 st.subheader("🔍 Search Winner")
                 
                 # Create a visually distinct container for the search section
@@ -658,18 +834,6 @@ if client:
                             placeholder = "Enter phone number (e.g., 9709112026)"
                         else:
                             placeholder = "Enter customer name"
-                        
-                        # Add some CSS for better visibility
-                        st.markdown("""
-                            <style>
-                            .search-input {
-                                background-color: #f0f2f6;
-                                padding: 10px;
-                                border-radius: 5px;
-                                border: 1px solid #ddd;
-                            }
-                            </style>
-                        """, unsafe_allow_html=True)
                 
                 # Search input box with better styling
                 st.markdown("### 🔎 Enter Search Value")
@@ -803,51 +967,12 @@ else:
     st.error("Connection failed")
 
 # ============================================
-# FOOTER
+# FOOTER in sidebar
 # ============================================
-st.sidebar.markdown("---")
-st.sidebar.caption(f"Last updated: {datetime.now().strftime('%d %b %Y %H:%M')}")
-
-if st.sidebar.button("🔄 Refresh Data"):
-    st.cache_data.clear()
-    st.rerun()
-
-# Add custom CSS for better visibility
-st.markdown("""
-<style>
-    /* Style for search section */
-    div[data-testid="stVerticalBlock"] > div:has(> div[data-testid="stVerticalBlock"] > div[data-testid="stRadio"]) {
-        background-color: #f8f9fa;
-        padding: 15px;
-        border-radius: 10px;
-        border: 1px solid #e9ecef;
-        margin-bottom: 15px;
-    }
+with st.sidebar:
+    st.markdown("---")
+    st.caption(f"**Last updated:** {datetime.now().strftime('%d %b %Y %H:%M')}")
     
-    /* Style for input fields */
-    .stTextInput > div > div > input {
-        background-color: #ffffff;
-        border: 2px solid #4CAF50;
-        padding: 10px;
-        font-size: 16px;
-    }
-    
-    /* Style for radio buttons */
-    .stRadio > div {
-        flex-direction: row;
-        align-items: center;
-        background-color: #ffffff;
-        padding: 10px;
-        border-radius: 5px;
-        border: 1px solid #ddd;
-    }
-    
-    /* Style for metrics */
-    .stMetric {
-        background-color: #f8f9fa;
-        padding: 10px;
-        border-radius: 5px;
-        border: 1px solid #e9ecef;
-    }
-</style>
-""", unsafe_allow_html=True)
+    if st.button("🔄 Refresh Data", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
