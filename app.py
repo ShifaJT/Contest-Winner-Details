@@ -24,34 +24,63 @@ def find_column(df, possible_names):
             return name
     return None
 
-# Function to safely convert to datetime
+# Function to safely convert to datetime - IMPROVED
 def safe_to_datetime(series):
-    """Safely convert series to datetime"""
+    """Safely convert series to datetime with multiple format attempts"""
     try:
-        return pd.to_datetime(series, errors='coerce', dayfirst=True)
-    except:
+        # First try with dayfirst=True and format='mixed'
+        result = pd.to_datetime(series, errors='coerce', dayfirst=True, format='mixed')
+        
+        # If that fails, try cleaning the strings
+        if result.isna().any():
+            # Convert to string and clean
+            str_series = series.astype(str).str.strip()
+            # Try different date patterns
+            for pattern in ['%d-%m-%Y', '%d/%m/%Y', '%d.%m.%Y', '%Y-%m-%d', '%d %b %Y', '%d %B %Y']:
+                try:
+                    parsed = pd.to_datetime(str_series, errors='coerce', format=pattern)
+                    # Fill in any NaNs we successfully parsed
+                    mask = parsed.notna()
+                    result[mask] = parsed[mask]
+                except:
+                    continue
+        return result
+    except Exception as e:
         return pd.NaT
 
-# Function to determine contest status
+# Function to determine contest status - IMPROVED
 def get_contest_status(start_date, end_date, today):
     """Determine if contest is upcoming, running, or past"""
     try:
+        # Handle NaT values
         if pd.isna(start_date) or pd.isna(end_date):
             return 'unknown'
         
+        # Ensure we have datetime objects
+        if not isinstance(start_date, (pd.Timestamp, datetime)):
+            start_date = pd.to_datetime(start_date, errors='coerce')
+        if not isinstance(end_date, (pd.Timestamp, datetime)):
+            end_date = pd.to_datetime(end_date, errors='coerce')
+        
+        # Check again after conversion
+        if pd.isna(start_date) or pd.isna(end_date):
+            return 'unknown'
+        
+        # Get date objects
         start_date_obj = start_date.date() if hasattr(start_date, 'date') else pd.to_datetime(start_date).date()
         end_date_obj = end_date.date() if hasattr(end_date, 'date') else pd.to_datetime(end_date).date()
         
+        # Determine status
         if start_date_obj > today:
             return 'upcoming'
         elif start_date_obj <= today <= end_date_obj:
             return 'running'
         else:
             return 'past'
-    except:
+    except Exception as e:
         return 'unknown'
 
-# Function to create nice contest cards
+# Function to create nice contest cards - IMPROVED
 def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_date_col,
                        winner_date_col, kam_col, to_whom_col, eligibility_col, status):
     """Create a nice looking contest card"""
@@ -61,25 +90,68 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
     # Get contest eligibility
     contest_eligibility = row[eligibility_col] if eligibility_col and eligibility_col in row and pd.notna(row[eligibility_col]) else 'N/A'
    
+    # Format start date
     start_date = 'N/A'
     if start_date_col and start_date_col in row and pd.notna(row[start_date_col]):
-        if hasattr(row[start_date_col], 'strftime'):
-            start_date = row[start_date_col].strftime('%d %b %Y')
-        else:
+        try:
+            if hasattr(row[start_date_col], 'strftime'):
+                start_date = row[start_date_col].strftime('%d %b %Y')
+            else:
+                # Try to parse it
+                parsed = pd.to_datetime(str(row[start_date_col]), errors='coerce')
+                if not pd.isna(parsed):
+                    start_date = parsed.strftime('%d %b %Y')
+                else:
+                    start_date = str(row[start_date_col])
+        except:
             start_date = str(row[start_date_col])
    
+    # Format end date
     end_date = 'N/A'
     if end_date_col and end_date_col in row and pd.notna(row[end_date_col]):
-        if hasattr(row[end_date_col], 'strftime'):
-            end_date = row[end_date_col].strftime('%d %b %Y')
-        else:
+        try:
+            if hasattr(row[end_date_col], 'strftime'):
+                end_date = row[end_date_col].strftime('%d %b %Y')
+            else:
+                # Try to parse it
+                parsed = pd.to_datetime(str(row[end_date_col]), errors='coerce')
+                if not pd.isna(parsed):
+                    end_date = parsed.strftime('%d %b %Y')
+                else:
+                    end_date = str(row[end_date_col])
+        except:
             end_date = str(row[end_date_col])
    
+    # Format winner date - IMPROVED
     winner_date = 'N/A'
     if winner_date_col and winner_date_col in row and pd.notna(row[winner_date_col]):
-        if hasattr(row[winner_date_col], 'strftime'):
-            winner_date = row[winner_date_col].strftime('%d %b %Y')
-        else:
+        try:
+            if hasattr(row[winner_date_col], 'strftime'):
+                winner_date = row[winner_date_col].strftime('%d %b %Y')
+            else:
+                # Try multiple parsing strategies
+                date_str = str(row[winner_date_col]).strip()
+                # Common date patterns
+                patterns = ['%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%d.%m.%Y', '%d %b %Y', '%d %B %Y']
+                
+                parsed_date = None
+                for pattern in patterns:
+                    try:
+                        parsed_date = datetime.strptime(date_str, pattern)
+                        break
+                    except:
+                        continue
+                
+                if parsed_date:
+                    winner_date = parsed_date.strftime('%d %b %Y')
+                else:
+                    # Last resort: try pandas parsing
+                    parsed = pd.to_datetime(date_str, errors='coerce', dayfirst=True)
+                    if not pd.isna(parsed):
+                        winner_date = parsed.strftime('%d %b %Y')
+                    else:
+                        winner_date = date_str
+        except Exception as e:
             winner_date = str(row[winner_date_col])
    
     kam = row[kam_col] if kam_col and kam_col in row and pd.notna(row[kam_col]) else 'N/A'
@@ -88,12 +160,18 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
     # Calculate days left if contest is running
     days_left = ""
     if status == 'running' and end_date_col and end_date_col in row and pd.notna(row[end_date_col]):
-        if hasattr(row[end_date_col], 'date'):
-            end_date_obj = row[end_date_col].date()
+        try:
+            if hasattr(row[end_date_col], 'date'):
+                end_date_obj = row[end_date_col].date()
+            else:
+                end_date_obj = pd.to_datetime(row[end_date_col]).date()
+            
             today = datetime.now().date()
             days_left_int = (end_date_obj - today).days
             if days_left_int >= 0:
                 days_left = f"<br><strong>⏳ Days Left:</strong> {days_left_int} days"
+        except:
+            pass
    
     # Different styles based on status
     if status == 'running':
@@ -108,7 +186,7 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
    
     # Create card with contest eligibility
     card_html = f"""
-    <div style="
+    <div class="contest-card" style="
         background: {gradient};
         border-radius: 10px;
         padding: 20px;
@@ -144,9 +222,206 @@ if 'current_section' not in st.session_state:
     st.session_state.current_section = "🎯 Contest Dashboard"
 
 # App
-st.set_page_config(page_title="Contest Check", layout="wide")
+st.set_page_config(page_title="Contest Check", layout="wide", page_icon="🎯")
 st.title("🎯 Jumbotail Contest Details Dashboard")
 st.markdown("---")
+
+# Add comprehensive CSS for both light and dark modes
+st.markdown("""
+<style>
+    /* Base styles for all modes */
+    .stApp {
+        transition: background-color 0.3s ease, color 0.3s ease;
+    }
+    
+    /* Common styles */
+    .stRadio > div > label > div:first-child {
+        background-color: #4CAF50 !important;
+    }
+    
+    .gift-delivered {
+        background-color: #4CAF50 !important;
+        color: white !important;
+        padding: 2px 8px !important;
+        border-radius: 12px !important;
+        font-size: 12px !important;
+        font-weight: bold !important;
+        display: inline-block !important;
+    }
+    
+    .gift-pending {
+        background-color: #FF9800 !important;
+        color: white !important;
+        padding: 2px 8px !important;
+        border-radius: 12px !important;
+        font-size: 12px !important;
+        font-weight: bold !important;
+        display: inline-block !important;
+    }
+    
+    .gift-not-found {
+        background-color: #F44336 !important;
+        color: white !important;
+        padding: 2px 8px !important;
+        border-radius: 12px !important;
+        font-size: 12px !important;
+        font-weight: bold !important;
+        display: inline-block !important;
+    }
+    
+    /* Ensure contest cards have good contrast */
+    .contest-card h3 {
+        color: white !important;
+    }
+    
+    .contest-card div {
+        color: white !important;
+    }
+    
+    /* Light mode overrides */
+    [data-theme="light"] {
+        background-color: #ffffff !important;
+        color: #31333F !important;
+    }
+    
+    [data-theme="light"] .stRadio > div {
+        background-color: #f8f9fa !important;
+        padding: 10px !important;
+        border-radius: 5px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+    
+    [data-theme="light"] .stDateInput > div > div > input {
+        border: 2px solid #667eea !important;
+        border-radius: 5px !important;
+        background-color: white !important;
+        color: #31333F !important;
+    }
+    
+    [data-theme="light"] .stSelectbox > div > div > select {
+        border: 2px solid #667eea !important;
+        border-radius: 5px !important;
+        background-color: white !important;
+        color: #31333F !important;
+    }
+    
+    [data-theme="light"] .stTextInput > div > div > input {
+        background-color: white !important;
+        color: #31333F !important;
+        border: 1px solid #ccc !important;
+    }
+    
+    [data-theme="light"] [data-testid="stMetricValue"],
+    [data-theme="light"] [data-testid="stMetricLabel"] {
+        color: #31333F !important;
+    }
+    
+    /* Dark mode overrides */
+    [data-theme="dark"] {
+        background-color: #0E1117 !important;
+        color: #FAFAFA !important;
+    }
+    
+    [data-theme="dark"] .stRadio > div {
+        background-color: #262730 !important;
+        padding: 10px !important;
+        border-radius: 5px !important;
+        border: 1px solid #444 !important;
+    }
+    
+    [data-theme="dark"] .stRadio > label {
+        color: #FAFAFA !important;
+    }
+    
+    [data-theme="dark"] .stDateInput > div > div > input {
+        border: 2px solid #667eea !important;
+        border-radius: 5px !important;
+        background-color: #262730 !important;
+        color: #FAFAFA !important;
+    }
+    
+    [data-theme="dark"] .stSelectbox > div > div > select {
+        border: 2px solid #667eea !important;
+        border-radius: 5px !important;
+        background-color: #262730 !important;
+        color: #FAFAFA !important;
+    }
+    
+    [data-theme="dark"] .stTextInput > div > div > input {
+        background-color: #262730 !important;
+        color: #FAFAFA !important;
+        border: 1px solid #555 !important;
+    }
+    
+    [data-theme="dark"] [data-testid="stMetricValue"],
+    [data-theme="dark"] [data-testid="stMetricLabel"] {
+        color: #FAFAFA !important;
+    }
+    
+    [data-theme="dark"] .stDataFrame {
+        background-color: #262730 !important;
+        color: #FAFAFA !important;
+    }
+    
+    [data-theme="dark"] .stDataFrame th {
+        background-color: #1a1a24 !important;
+        color: #FAFAFA !important;
+    }
+    
+    [data-theme="dark"] .stDataFrame td {
+        background-color: #262730 !important;
+        color: #FAFAFA !important;
+    }
+    
+    [data-theme="dark"] .stExpander > div > div {
+        background-color: #262730 !important;
+        color: #FAFAFA !important;
+    }
+    
+    [data-theme="dark"] .stAlert {
+        background-color: #262730 !important;
+        color: #FAFAFA !important;
+    }
+    
+    [data-theme="dark"] .stSuccess {
+        background-color: #1a472a !important;
+        color: #FAFAFA !important;
+    }
+    
+    [data-theme="dark"] .stInfo {
+        background-color: #1a3a5f !important;
+        color: #FAFAFA !important;
+    }
+    
+    [data-theme="dark"] .stWarning {
+        background-color: #5d4037 !important;
+        color: #FAFAFA !important;
+    }
+    
+    [data-theme="dark"] .stError {
+        background-color: #7f1d1d !important;
+        color: #FAFAFA !important;
+    }
+    
+    /* Force text color for all main content */
+    .main .block-container {
+        color: inherit !important;
+    }
+    
+    h1, h2, h3, h4, h5, h6, p, div, span {
+        color: inherit !important;
+    }
+    
+    /* Ensure sidebar text is visible */
+    .stSidebar {
+        color: inherit !important;
+    }
+    
+    .stSidebar * {
+        color: inherit !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Create navigation menu with radio buttons
 st.sidebar.title("📊 Navigation")
@@ -158,64 +433,6 @@ section = st.sidebar.radio(
 
 # Connect to Google Sheets
 client = connect_sheets()
-
-# Add some custom CSS for better appearance
-st.markdown("""
-<style>
-    /* Style for radio buttons */
-    .stRadio > div {
-        background-color: #f8f9fa;
-        padding: 10px;
-        border-radius: 5px;
-        border: 1px solid #dee2e6;
-    }
-    
-    /* Style for selected radio button */
-    .stRadio > div > label > div:first-child {
-        background-color: #4CAF50 !important;
-    }
-    
-    /* Style for date inputs */
-    .stDateInput > div > div > input {
-        border: 2px solid #667eea;
-        border-radius: 5px;
-    }
-    
-    /* Style for select boxes */
-    .stSelectbox > div > div > select {
-        border: 2px solid #667eea;
-        border-radius: 5px;
-    }
-    
-    /* Style for gift status badges */
-    .gift-delivered {
-        background-color: #4CAF50;
-        color: white;
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 12px;
-        font-weight: bold;
-    }
-    
-    .gift-pending {
-        background-color: #FF9800;
-        color: white;
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 12px;
-        font-weight: bold;
-    }
-    
-    .gift-not-found {
-        background-color: #F44336;
-        color: white;
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 12px;
-        font-weight: bold;
-    }
-</style>
-""", unsafe_allow_html=True)
 
 if client:
     try:
@@ -251,19 +468,29 @@ if client:
         if not winners.empty:
             st.sidebar.success(f"✅ {len(winners)} winners loaded")
        
-        # Process contest data
+        # Process contest data - IMPROVED DATE HANDLING
         if not contests.empty:
             # Find important columns
             camp_name_col = find_column(contests, ['Camp Name', 'Campaign Name', 'Camp Description', 'Camp'])
             camp_type_col = find_column(contests, ['Camp Type', 'Type', 'Category'])
             start_date_col = find_column(contests, ['Start Date', 'StartDate', 'Start'])
             end_date_col = find_column(contests, ['End Date', 'EndDate', 'End'])
-            winner_date_col = find_column(contests, ['Winner Announcement Date', 'Winner Date', 'Announcement Date'])
+            
+            # IMPROVED: Better winner date column detection
+            winner_date_col = find_column(contests, [
+                'Winner Announcement Date', 
+                'Winner Date', 
+                'Announcement Date',
+                'Winner Announcement',
+                'Winner Ann Date',
+                'Winner_Announcement_Date'
+            ])
+            
             kam_col = find_column(contests, ['KAM', 'Owner', 'Manager', 'Responsible'])
             to_whom_col = find_column(contests, ['To Whom?', 'To Whom', 'Assigned To', 'Team'])
             eligibility_col = find_column(contests, ['Contest Eligiblity', 'Contest Eligibility', 'Eligibility', 'Contest Eligiblity '])
            
-            # Fix dates safely
+            # Fix dates safely - IMPROVED
             if start_date_col:
                 contests[start_date_col] = safe_to_datetime(contests[start_date_col])
                 contests['Start_Date'] = contests[start_date_col]
@@ -275,20 +502,37 @@ if client:
                 contests[end_date_col] = safe_to_datetime(contests[end_date_col])
            
             if winner_date_col:
+                # Special handling for winner dates
                 contests[winner_date_col] = safe_to_datetime(contests[winner_date_col])
+                # If still NaT, try alternative parsing
+                if contests[winner_date_col].isna().any():
+                    # Try direct string parsing
+                    for idx, val in enumerate(contests[winner_date_col]):
+                        if pd.isna(val):
+                            orig_val = contests.iloc[idx][winner_date_col]
+                            if isinstance(orig_val, str):
+                                try:
+                                    # Try common date patterns
+                                    for fmt in ['%d-%m-%Y', '%d/%m/%Y', '%Y-%m-%d', '%d %b %Y']:
+                                        try:
+                                            parsed = datetime.strptime(orig_val.strip(), fmt)
+                                            contests.at[idx, winner_date_col] = parsed
+                                            break
+                                        except:
+                                            continue
+                                except:
+                                    pass
        
-        # Process winner data
+        # Process winner data - IMPROVED
         if not winners.empty:
             # Fix dates in winner data safely
-            if 'Start Date' in winners.columns:
-                winners['Start Date'] = safe_to_datetime(winners['Start Date'])
-            if 'End Date' in winners.columns:
-                winners['End Date'] = safe_to_datetime(winners['End Date'])
-            if 'Winner Announcement Date' in winners.columns:
-                winners['Winner Announcement Date'] = safe_to_datetime(winners['Winner Announcement Date'])
+            date_cols = ['Start Date', 'End Date', 'Winner Announcement Date']
+            for col in date_cols:
+                if col in winners.columns:
+                    winners[col] = safe_to_datetime(winners[col])
             
             # Find Gift Status column (handle different possible names)
-            gift_status_col = find_column(winners, ['Gift Status', 'GiftStatus', 'Status', 'Delivery Status'])
+            gift_status_col = find_column(winners, ['Gift Status', 'GiftStatus', 'Status', 'Delivery Status', 'Gift_Status'])
        
         today = datetime.now().date()
         current_month = today.month
@@ -315,20 +559,49 @@ if client:
                     (contests['Month_Num'] == current_month)
                 ]
                
-                # Calculate contest status for all contests
-                contests['Status'] = contests.apply(
-                    lambda row: get_contest_status(row[start_date_col], row[end_date_col], today), 
-                    axis=1
-                )
+                # Calculate contest status for all contests - IMPROVED
+                contests['Status'] = 'unknown'
+                for idx, row in contests.iterrows():
+                    start_val = row[start_date_col] if start_date_col in row else None
+                    end_val = row[end_date_col] if end_date_col in row else None
+                    contests.at[idx, 'Status'] = get_contest_status(start_val, end_val, today)
                
-                # Get contests by status
-                running_contests = contests[contests['Status'] == 'running']
-                upcoming_contests = contests[contests['Status'] == 'upcoming']
-                past_contests = contests[contests['Status'] == 'past']
+                # Get contests by status - IMPROVED running contests detection
+                running_contests = contests[contests['Status'] == 'running'].copy()
+                upcoming_contests = contests[contests['Status'] == 'upcoming'].copy()
+                past_contests = contests[contests['Status'] == 'past'].copy()
+               
+                # FIX: Direct calculation of running contests to ensure accuracy
+                if start_date_col and end_date_col:
+                    # Clear and recalculate running contests
+                    running_mask = (
+                        pd.notna(contests[start_date_col]) & 
+                        pd.notna(contests[end_date_col]) &
+                        (contests[start_date_col].dt.date <= today) & 
+                        (contests[end_date_col].dt.date >= today)
+                    )
+                    running_contests = contests[running_mask].copy()
+                    running_contests['Status'] = 'running'
+                    
+                    # Update other statuses
+                    upcoming_mask = (
+                        pd.notna(contests[start_date_col]) & 
+                        (contests[start_date_col].dt.date > today)
+                    )
+                    upcoming_contests = contests[upcoming_mask].copy()
+                    upcoming_contests['Status'] = 'upcoming'
+                    
+                    past_mask = (
+                        pd.notna(contests[end_date_col]) & 
+                        (contests[end_date_col].dt.date < today)
+                    )
+                    past_contests = contests[past_mask].copy()
+                    past_contests['Status'] = 'past'
                
                 # Recently ended (last 7 days)
                 recently_ended = contests[
                     (contests['Status'] == 'past') &
+                    pd.notna(contests[end_date_col]) &
                     (contests[end_date_col].dt.date >= (today - timedelta(days=7)))
                 ]
                
@@ -373,8 +646,11 @@ if client:
                             try:
                                 days_left_list = []
                                 for _, row in running_contests.iterrows():
-                                    if hasattr(row[end_date_col], 'date'):
-                                        end_date_obj = row[end_date_col].date()
+                                    if pd.notna(row[end_date_col]):
+                                        if hasattr(row[end_date_col], 'date'):
+                                            end_date_obj = row[end_date_col].date()
+                                        else:
+                                            end_date_obj = pd.to_datetime(row[end_date_col]).date()
                                         days_left = (end_date_obj - today).days
                                         if days_left >= 0:
                                             days_left_list.append(days_left)
@@ -462,7 +738,12 @@ if client:
                         with cols[idx % 3]:
                             camp_name = row[camp_name_col] if camp_name_col else 'N/A'
                             camp_type = row[camp_type_col] if camp_type_col else 'N/A'
-                            end_date = row[end_date_col].strftime('%d %b') if hasattr(row[end_date_col], 'strftime') else 'N/A'
+                            end_date = 'N/A'
+                            if pd.notna(row[end_date_col]):
+                                if hasattr(row[end_date_col], 'strftime'):
+                                    end_date = row[end_date_col].strftime('%d %b')
+                                else:
+                                    end_date = str(row[end_date_col])
                            
                             st.markdown(f"""
                             <div style="
@@ -631,7 +912,9 @@ if client:
                             # Format dates
                             for date_col in [start_date_col, end_date_col, winner_date_col]:
                                 if date_col and date_col in display_df.columns:
-                                    display_df[date_col] = display_df[date_col].dt.strftime('%d-%m-%Y')
+                                    display_df[date_col] = display_df[date_col].apply(
+                                        lambda x: x.strftime('%d-%m-%Y') if pd.notna(x) and hasattr(x, 'strftime') else str(x)
+                                    )
                            
                             st.dataframe(display_df, use_container_width=True, height=400)
                    
@@ -803,10 +1086,12 @@ if client:
                                             # Get dates from winner data
                                             start_date_val = row.get('Start Date', None)
                                             end_date_val = row.get('End Date', None)
+                                            winner_date_val = row.get('Winner Announcement Date', None)
                                            
                                             # Format dates
                                             start_date_str = 'N/A'
                                             end_date_str = 'N/A'
+                                            winner_date_str = 'N/A'
                                            
                                             if pd.notna(start_date_val):
                                                 if hasattr(start_date_val, 'strftime'):
@@ -819,6 +1104,12 @@ if client:
                                                     end_date_str = end_date_val.strftime('%d-%m-%Y')
                                                 else:
                                                     end_date_str = str(end_date_val)
+                                            
+                                            if pd.notna(winner_date_val):
+                                                if hasattr(winner_date_val, 'strftime'):
+                                                    winner_date_str = winner_date_val.strftime('%d-%m-%Y')
+                                                else:
+                                                    winner_date_str = str(winner_date_val)
                                            
                                             st.markdown(f"""
                                             **Camp Description:** {camp_desc}  
@@ -833,35 +1124,31 @@ if client:
                                             phone = row.get('customer_phonenumber', 'N/A')
                                             store = row.get('business_displayname', 'N/A')
                                             bzid_val = row.get('businessid', 'N/A')
-                                            winner_date_val = row.get('Winner Announcement Date', 'N/A')
-                                            
-                                            # Get Gift Status
-                                            gift_status_val = row.get(gift_status_col, 'N/A') if gift_status_col else 'N/A'
-                                            
-                                            # Determine CSS class for gift status
-                                            gift_status_class = ""
-                                            if gift_status_val:
-                                                gift_status_lower = str(gift_status_val).lower()
-                                                if 'delivered' in gift_status_lower:
-                                                    gift_status_class = "gift-delivered"
-                                                elif 'pending' in gift_status_lower or 'not' in gift_status_lower:
-                                                    gift_status_class = "gift-pending"
-                                                else:
-                                                    gift_status_class = "gift-not-found"
                                             
                                             st.markdown(f"""
                                             **Name:** {winner_name}  
                                             **Phone:** {phone}  
                                             **Store:** {store}  
                                             **BZID:** {bzid_val}  
-                                            **Winner Date:** {winner_date_val}
+                                            **Winner Date:** {winner_date_str}
                                             """)
                                             
                                             # Display Gift Status with badge
-                                            if gift_status_val and gift_status_val != 'N/A':
-                                                st.markdown(f"**Gift Status:** <span class='{gift_status_class}'>{gift_status_val}</span>", unsafe_allow_html=True)
-                                            else:
-                                                st.markdown(f"**Gift Status:** {gift_status_val}")
+                                            if gift_status_col and gift_status_col in row:
+                                                gift_status_val = row[gift_status_col]
+                                                if pd.notna(gift_status_val) and str(gift_status_val).strip():
+                                                    gift_status_str = str(gift_status_val).strip()
+                                                    gift_status_lower = gift_status_str.lower()
+                                                    if 'delivered' in gift_status_lower:
+                                                        gift_status_class = "gift-delivered"
+                                                    elif 'pending' in gift_status_lower or 'not' in gift_status_lower:
+                                                        gift_status_class = "gift-pending"
+                                                    else:
+                                                        gift_status_class = "gift-not-found"
+                                                    
+                                                    st.markdown(f"**Gift Status:** <span class='{gift_status_class}'>{gift_status_str}</span>", unsafe_allow_html=True)
+                                                else:
+                                                    st.markdown("**Gift Status:** N/A")
                     else:
                         st.warning("⚠️ No winners found for the search criteria in selected date range")
                 else:
@@ -916,7 +1203,9 @@ if client:
                     # Format dates for download
                     for date_col in ['Start Date', 'End Date', 'Winner Announcement Date']:
                         if date_col in download_df.columns:
-                            download_df[date_col] = download_df[date_col].dt.strftime('%d-%m-%Y')
+                            download_df[date_col] = download_df[date_col].apply(
+                                lambda x: x.strftime('%d-%m-%Y') if pd.notna(x) and hasattr(x, 'strftime') else str(x)
+                            )
                     
                     csv_data = download_df.to_csv(index=False).encode('utf-8')
                     
