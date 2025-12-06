@@ -523,6 +523,61 @@ st.markdown("""
         background-color: #4CAF50 !important;
         color: white !important;
     }
+    
+    /* ============================================ */
+    /* FIX FOR RECENTLY ENDED CONTESTS SECTION      */
+    /* ============================================ */
+    
+    /* Light mode styling for Recently Ended Contests */
+    [data-theme="light"] .recently-ended-container {
+        background-color: #f8f9fa !important;
+        color: #262730 !important;
+    }
+    
+    [data-theme="light"] .recently-ended-card {
+        background-color: #ffffff !important;
+        color: #262730 !important;
+        border: 1px solid #dee2e6 !important;
+        border-left: 4px solid #764ba2 !important;
+    }
+    
+    [data-theme="light"] .recently-ended-card strong {
+        color: #262730 !important;
+    }
+    
+    [data-theme="light"] .recently-ended-card small {
+        color: #6c757d !important;
+    }
+    
+    /* Dark mode styling for Recently Ended Contests */
+    [data-theme="dark"] .recently-ended-container {
+        background-color: #262730 !important;
+        color: #FAFAFA !important;
+    }
+    
+    [data-theme="dark"] .recently-ended-card {
+        background-color: #1a1a24 !important;
+        color: #FAFAFA !important;
+        border: 1px solid #444 !important;
+        border-left: 4px solid #667eea !important;
+    }
+    
+    [data-theme="dark"] .recently-ended-card strong {
+        color: #FAFAFA !important;
+    }
+    
+    [data-theme="dark"] .recently-ended-card small {
+        color: #AAAAAA !important;
+    }
+    
+    /* Styling for the Recently Ended Contests header */
+    [data-theme="light"] .recently-ended-header {
+        color: #262730 !important;
+    }
+    
+    [data-theme="dark"] .recently-ended-header {
+        color: #FAFAFA !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -818,11 +873,14 @@ if client:
                     st.info("📭 No upcoming contests")
                
                 # ============================================
-                # RECENTLY ENDED CONTESTS
+                # RECENTLY ENDED CONTESTS (FIXED FOR DARK MODE)
                 # ============================================
                 if not recently_ended.empty:
                     st.subheader("✅ Recently Ended Contests (Last 7 Days)")
-                   
+                    
+                    # Add a container with a class for styling
+                    st.markdown('<div class="recently-ended-container">', unsafe_allow_html=True)
+                    
                     # Show in a compact grid
                     cols = st.columns(3)
                     for idx, (_, row) in enumerate(recently_ended.head(9).iterrows()):  # Show max 9
@@ -835,20 +893,20 @@ if client:
                                     end_date = row[end_date_col].strftime('%d %b')
                                 else:
                                     end_date = str(row[end_date_col])
-                           
+                            
                             st.markdown(f"""
-                            <div style="
-                                background: #f0f2f6;
+                            <div class="recently-ended-card" style="
                                 border-radius: 8px;
                                 padding: 15px;
                                 margin: 5px 0;
-                                border-left: 4px solid #764ba2;
                             ">
                                 <strong>{camp_name}</strong><br>
                                 <small>Type: {camp_type}</small><br>
                                 <small>Ended: {end_date}</small>
                             </div>
                             """, unsafe_allow_html=True)
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
                 else:
                     st.subheader("✅ Recently Ended Contests (Last 7 Days)")
                     st.info("No contests ended in the last 7 days")
