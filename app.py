@@ -245,15 +245,28 @@ st.set_page_config(page_title="Contest Check", layout="wide", page_icon="🎯")
 st.title("🎯 Jumbotail Contest Details Dashboard")
 st.markdown("---")
 
-# Add comprehensive CSS for both light and dark modes
+# Add comprehensive CSS for both light and dark modes - IMPROVED
 st.markdown("""
 <style>
-    /* Base styles for all modes */
-    .stApp {
-        transition: background-color 0.3s ease, color 0.3s ease;
+    /* Reset and base styles */
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
     }
     
-    /* Common styles */
+    /* Common styles for all elements */
+    body, .stApp, .main .block-container {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        transition: all 0.3s ease;
+    }
+    
+    /* Force all text to be visible */
+    h1, h2, h3, h4, h5, h6, p, span, div, label, strong, em, small, .stMarkdown, .stText, .stAlert, .stInfo, .stSuccess, .stWarning, .stError {
+        color: inherit !important;
+    }
+    
+    /* Common styles for UI components */
     .stRadio > div > label > div:first-child {
         background-color: #4CAF50 !important;
     }
@@ -297,10 +310,20 @@ st.markdown("""
         color: white !important;
     }
     
-    /* Light mode overrides */
+    /* Main container styling */
+    .main .block-container {
+        background-color: transparent !important;
+    }
+    
+    /* Light theme specific styles */
     [data-theme="light"] {
-        background-color: #ffffff !important;
-        color: #31333F !important;
+        color: #262730 !important;
+        background-color: #FFFFFF !important;
+    }
+    
+    [data-theme="light"] .stApp {
+        background-color: #FFFFFF !important;
+        color: #262730 !important;
     }
     
     [data-theme="light"] .stRadio > div {
@@ -308,36 +331,60 @@ st.markdown("""
         padding: 10px !important;
         border-radius: 5px !important;
         border: 1px solid #dee2e6 !important;
+        color: #262730 !important;
     }
     
-    [data-theme="light"] .stDateInput > div > div > input {
-        border: 2px solid #667eea !important;
-        border-radius: 5px !important;
-        background-color: white !important;
-        color: #31333F !important;
+    [data-theme="light"] .stRadio label {
+        color: #262730 !important;
     }
     
-    [data-theme="light"] .stSelectbox > div > div > select {
-        border: 2px solid #667eea !important;
-        border-radius: 5px !important;
-        background-color: white !important;
-        color: #31333F !important;
-    }
-    
+    [data-theme="light"] .stDateInput > div > div > input,
+    [data-theme="light"] .stSelectbox > div > div > select,
     [data-theme="light"] .stTextInput > div > div > input {
         background-color: white !important;
-        color: #31333F !important;
-        border: 1px solid #ccc !important;
+        color: #262730 !important;
+        border: 2px solid #667eea !important;
+        border-radius: 5px !important;
+    }
+    
+    [data-theme="light"] .stDataFrame {
+        background-color: white !important;
+        color: #262730 !important;
+    }
+    
+    [data-theme="light"] .stDataFrame th {
+        background-color: #f8f9fa !important;
+        color: #262730 !important;
+    }
+    
+    [data-theme="light"] .stDataFrame td {
+        background-color: white !important;
+        color: #262730 !important;
+    }
+    
+    [data-theme="light"] .stExpander > div > div {
+        background-color: #f8f9fa !important;
+        color: #262730 !important;
     }
     
     [data-theme="light"] [data-testid="stMetricValue"],
     [data-theme="light"] [data-testid="stMetricLabel"] {
-        color: #31333F !important;
+        color: #262730 !important;
     }
     
-    /* Dark mode overrides */
+    /* Dark theme specific styles - ENHANCED */
     [data-theme="dark"] {
+        color: #FAFAFA !important;
         background-color: #0E1117 !important;
+    }
+    
+    [data-theme="dark"] .stApp {
+        background-color: #0E1117 !important;
+        color: #FAFAFA !important;
+    }
+    
+    /* Force all text in dark mode to be light */
+    [data-theme="dark"] * {
         color: #FAFAFA !important;
     }
     
@@ -346,35 +393,24 @@ st.markdown("""
         padding: 10px !important;
         border-radius: 5px !important;
         border: 1px solid #444 !important;
-    }
-    
-    [data-theme="dark"] .stRadio > label {
         color: #FAFAFA !important;
     }
     
-    [data-theme="dark"] .stDateInput > div > div > input {
-        border: 2px solid #667eea !important;
-        border-radius: 5px !important;
-        background-color: #262730 !important;
+    [data-theme="dark"] .stRadio label {
         color: #FAFAFA !important;
     }
     
-    [data-theme="dark"] .stSelectbox > div > div > select {
-        border: 2px solid #667eea !important;
-        border-radius: 5px !important;
-        background-color: #262730 !important;
-        color: #FAFAFA !important;
-    }
-    
+    [data-theme="dark"] .stDateInput > div > div > input,
+    [data-theme="dark"] .stSelectbox > div > div > select,
     [data-theme="dark"] .stTextInput > div > div > input {
         background-color: #262730 !important;
         color: #FAFAFA !important;
-        border: 1px solid #555 !important;
+        border: 2px solid #667eea !important;
+        border-radius: 5px !important;
     }
     
-    [data-theme="dark"] [data-testid="stMetricValue"],
-    [data-theme="dark"] [data-testid="stMetricLabel"] {
-        color: #FAFAFA !important;
+    [data-theme="dark"] .stDateInput > div > div > input::placeholder {
+        color: #AAAAAA !important;
     }
     
     [data-theme="dark"] .stDataFrame {
@@ -400,6 +436,7 @@ st.markdown("""
     [data-theme="dark"] .stAlert {
         background-color: #262730 !important;
         color: #FAFAFA !important;
+        border-color: #444 !important;
     }
     
     [data-theme="dark"] .stSuccess {
@@ -422,22 +459,69 @@ st.markdown("""
         color: #FAFAFA !important;
     }
     
-    /* Force text color for all main content */
-    .main .block-container {
-        color: inherit !important;
+    [data-theme="dark"] [data-testid="stMetricValue"],
+    [data-theme="dark"] [data-testid="stMetricLabel"] {
+        color: #FAFAFA !important;
     }
     
-    h1, h2, h3, h4, h5, h6, p, div, span {
-        color: inherit !important;
+    /* Calendar styling for dark mode */
+    [data-theme="dark"] .rdrCalendarWrapper {
+        background-color: #262730 !important;
+        color: #FAFAFA !important;
     }
     
-    /* Ensure sidebar text is visible */
+    [data-theme="dark"] .rdrDateDisplay {
+        background-color: #1a1a24 !important;
+        color: #FAFAFA !important;
+    }
+    
+    [data-theme="dark"] .rdrMonthAndYearWrapper {
+        background-color: #262730 !important;
+        color: #FAFAFA !important;
+    }
+    
+    [data-theme="dark"] .rdrMonthName {
+        color: #FAFAFA !important;
+    }
+    
+    [data-theme="dark"] .rdrWeekDay {
+        color: #FAFAFA !important;
+    }
+    
+    [data-theme="dark"] .rdrDay {
+        color: #FAFAFA !important;
+    }
+    
+    [data-theme="dark"] .rdrDayNumber span {
+        color: #FAFAFA !important;
+    }
+    
+    /* Sidebar styling */
     .stSidebar {
-        color: inherit !important;
+        background-color: transparent !important;
     }
     
-    .stSidebar * {
-        color: inherit !important;
+    [data-theme="light"] .stSidebar * {
+        color: #262730 !important;
+    }
+    
+    [data-theme="dark"] .stSidebar * {
+        color: #FAFAFA !important;
+    }
+    
+    /* Button styling */
+    .stButton > button {
+        border-radius: 5px !important;
+    }
+    
+    [data-theme="light"] .stButton > button {
+        background-color: #4CAF50 !important;
+        color: white !important;
+    }
+    
+    [data-theme="dark"] .stButton > button {
+        background-color: #4CAF50 !important;
+        color: white !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -770,7 +854,7 @@ if client:
                     st.info("No contests ended in the last 7 days")
        
         # ============================================
-        # FILTER CONTESTS SECTION - FIXED
+        # FILTER CONTESTS SECTION - FIXED DATE SELECTION
         # ============================================
         elif section == "🔍 Filter Contests":
             st.header("🔍 Filter Contests")
@@ -782,19 +866,23 @@ if client:
                 col1, col2 = st.columns(2)
                
                 with col1:
-                    # Get min and max dates safely
+                    # Get min and max dates safely - FIXED TO ALLOW FUTURE DATES
                     if start_date_col and pd.notna(contests[start_date_col]).any():
                         try:
                             # Convert to date objects for the date input
                             valid_dates = contests[start_date_col].dropna()
                             min_date = valid_dates.min().date()
-                            max_date = valid_dates.max().date()
+                            # Allow dates up to 2 years in the future
+                            max_date_from_data = valid_dates.max().date()
+                            future_max = date(current_year + 2, 12, 31)
+                            # Use whichever is later
+                            max_date = max_date_from_data if max_date_from_data > future_max else future_max
                         except:
                             min_date = date(current_year, 1, 1)
-                            max_date = today
+                            max_date = date(current_year + 2, 12, 31)
                     else:
                         min_date = date(current_year, 1, 1)
-                        max_date = today
+                        max_date = date(current_year + 2, 12, 31)
                    
                     start_date = st.date_input(
                         "From Date",
@@ -807,7 +895,7 @@ if client:
                 with col2:
                     end_date = st.date_input(
                         "To Date",
-                        value=today,
+                        value=date(current_year + 1, 12, 31) if today.month == 12 else date(current_year + 1, current_month, 1),
                         min_value=min_date,
                         max_value=max_date,
                         key="contest_end_date"
@@ -822,6 +910,11 @@ if client:
                     if 'Year' in contests.columns and pd.notna(contests['Year']).any():
                         years = sorted(contests['Year'].dropna().unique(), reverse=True)
                         years = [int(y) for y in years if pd.notna(y)]
+                        # Add future years
+                        for future_year in range(current_year + 1, current_year + 3):
+                            if future_year not in years:
+                                years.append(future_year)
+                        years.sort(reverse=True)
                         selected_year = st.selectbox(
                             "Select Year",
                             ["All Years"] + years,
@@ -829,7 +922,13 @@ if client:
                             key="contest_year"
                         )
                     else:
-                        selected_year = "All Years"
+                        years = [current_year, current_year + 1, current_year + 2]
+                        selected_year = st.selectbox(
+                            "Select Year",
+                            ["All Years"] + years,
+                            index=0,
+                            key="contest_year"
+                        )
                
                 with col2:
                     # Month filter
@@ -851,7 +950,8 @@ if client:
                 filtered_contests = contests.copy()
                
                 # Debug: Show raw data for troubleshooting
-                if st.checkbox("🔧 Show debug info (for troubleshooting)"):
+                debug_enabled = st.checkbox("🔧 Show debug info (for troubleshooting)", key="debug_checkbox")
+                if debug_enabled:
                     st.write(f"Total contests: {len(contests)}")
                     if start_date_col and start_date_col in contests.columns:
                         st.write(f"Sample start dates (first 10):")
@@ -1038,17 +1138,20 @@ if client:
                 col1, col2 = st.columns(2)
                
                 with col1:
-                    # Get min and max dates from winners data
+                    # Get min and max dates from winners data - ALLOW FUTURE DATES
                     if 'Start Date' in winners.columns and pd.notna(winners['Start Date']).any():
                         try:
                             winner_min_date = winners['Start Date'].min().date()
-                            winner_max_date = winners['Start Date'].max().date()
+                            winner_max_date_from_data = winners['Start Date'].max().date()
+                            # Allow up to 2 years in future
+                            future_max = date(current_year + 2, 12, 31)
+                            winner_max_date = winner_max_date_from_data if winner_max_date_from_data > future_max else future_max
                         except:
                             winner_min_date = date(2023, 1, 1)
-                            winner_max_date = today
+                            winner_max_date = date(current_year + 2, 12, 31)
                     else:
                         winner_min_date = date(2023, 1, 1)
-                        winner_max_date = today
+                        winner_max_date = date(current_year + 2, 12, 31)
                    
                     winner_start_date = st.date_input(
                         "From Contest Start Date",
@@ -1061,7 +1164,7 @@ if client:
                 with col2:
                     winner_end_date = st.date_input(
                         "To Contest End Date",
-                        value=today,
+                        value=date(current_year + 1, 12, 31) if today.month == 12 else date(current_year + 1, current_month, 1),
                         min_value=winner_min_date,
                         max_value=winner_max_date,
                         key="winner_end_date"
