@@ -1020,8 +1020,8 @@ if client:
                                 if not matching.empty:
                                     st.write(f"**Found contest '{search_term}':**")
                                     st.write(matching[[camp_name_col, start_date_col, end_date_col]])
-    else:
-        st.warning("No contest data available")
+            else:
+                st.warning("No contest data available")
        
         # ============================================
         # CHECK WINNERS SECTION
