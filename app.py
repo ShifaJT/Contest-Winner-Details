@@ -24,26 +24,45 @@ def find_column(df, possible_names):
             return name
     return None
 
-# Function to safely convert to datetime - IMPROVED
+# Function to safely convert to datetime - IMPROVED for DD-MM-YYYY format
 def safe_to_datetime(series):
     """Safely convert series to datetime with multiple format attempts"""
     try:
-        # First try with dayfirst=True and format='mixed'
-        result = pd.to_datetime(series, errors='coerce', dayfirst=True, format='mixed')
+        # First, ensure we're working with strings
+        str_series = series.astype(str).str.strip()
         
-        # If that fails, try cleaning the strings
+        # Remove common issues
+        str_series = str_series.replace(['NaT', 'NaN', 'nan', 'None', ''], pd.NA)
+        
+        # Try specific formats in order of likelihood
+        formats_to_try = [
+            '%d-%m-%Y',  # DD-MM-YYYY (your format)
+            '%d/%m/%Y',  # DD/MM/YYYY
+            '%Y-%m-%d',  # YYYY-MM-DD
+            '%d %b %Y',  # DD MMM YYYY
+            '%d %B %Y',  # DD Month YYYY
+            '%m/%d/%Y',  # MM/DD/YYYY
+            '%d-%m-%y',  # DD-MM-YY
+            '%d/%m/%y',  # DD/MM/YY
+        ]
+        
+        result = pd.Series([pd.NaT] * len(series), dtype='datetime64[ns]')
+        
+        for fmt in formats_to_try:
+            try:
+                parsed = pd.to_datetime(str_series, errors='coerce', format=fmt)
+                # Fill in any NaNs we successfully parsed
+                mask = parsed.notna() & result.isna()
+                result[mask] = parsed[mask]
+            except:
+                continue
+        
+        # If we still have NaNs, try pandas' built-in parser with dayfirst=True
         if result.isna().any():
-            # Convert to string and clean
-            str_series = series.astype(str).str.strip()
-            # Try different date patterns
-            for pattern in ['%d-%m-%Y', '%d/%m/%Y', '%d.%m.%Y', '%Y-%m-%d', '%d %b %Y', '%d %B %Y']:
-                try:
-                    parsed = pd.to_datetime(str_series, errors='coerce', format=pattern)
-                    # Fill in any NaNs we successfully parsed
-                    mask = parsed.notna()
-                    result[mask] = parsed[mask]
-                except:
-                    continue
+            final_try = pd.to_datetime(str_series, errors='coerce', dayfirst=True)
+            mask = final_try.notna() & result.isna()
+            result[mask] = final_try[mask]
+        
         return result
     except Exception as e:
         return pd.NaT
@@ -98,7 +117,7 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
                 start_date = row[start_date_col].strftime('%d %b %Y')
             else:
                 # Try to parse it
-                parsed = pd.to_datetime(str(row[start_date_col]), errors='coerce')
+                parsed = pd.to_datetime(str(row[start_date_col]), errors='coerce', dayfirst=True)
                 if not pd.isna(parsed):
                     start_date = parsed.strftime('%d %b %Y')
                 else:
@@ -114,7 +133,7 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
                 end_date = row[end_date_col].strftime('%d %b %Y')
             else:
                 # Try to parse it
-                parsed = pd.to_datetime(str(row[end_date_col]), errors='coerce')
+                parsed = pd.to_datetime(str(row[end_date_col]), errors='coerce', dayfirst=True)
                 if not pd.isna(parsed):
                     end_date = parsed.strftime('%d %b %Y')
                 else:
@@ -132,7 +151,7 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
                 # Try multiple parsing strategies
                 date_str = str(row[winner_date_col]).strip()
                 # Common date patterns
-                patterns = ['%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%d.%m.%Y', '%d %b %Y', '%d %B %Y']
+                patterns = ['%d-%m-%Y', '%d/%m/%Y', '%Y-%m-%d', '%d %b %Y', '%d %B %Y', '%m/%d/%Y']
                 
                 parsed_date = None
                 for pattern in patterns:
@@ -164,7 +183,7 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
             if hasattr(row[end_date_col], 'date'):
                 end_date_obj = row[end_date_col].date()
             else:
-                end_date_obj = pd.to_datetime(row[end_date_col]).date()
+                end_date_obj = pd.to_datetime(row[end_date_col], dayfirst=True).date()
             
             today = datetime.now().date()
             days_left_int = (end_date_obj - today).days
@@ -490,38 +509,20 @@ if client:
             to_whom_col = find_column(contests, ['To Whom?', 'To Whom', 'Assigned To', 'Team'])
             eligibility_col = find_column(contests, ['Contest Eligiblity', 'Contest Eligibility', 'Eligibility', 'Contest Eligiblity '])
            
-            # Fix dates safely - IMPROVED
+            # Fix dates safely - IMPROVED for DD-MM-YYYY format
             if start_date_col:
                 contests[start_date_col] = safe_to_datetime(contests[start_date_col])
                 contests['Start_Date'] = contests[start_date_col]
-                contests['Year'] = contests['Start_Date'].dt.year
-                contests['Month'] = contests['Start_Date'].dt.month_name()
-                contests['Month_Num'] = contests['Start_Date'].dt.month
+                # Extract year and month with error handling
+                contests['Year'] = contests['Start_Date'].dt.year.where(contests['Start_Date'].notna(), pd.NA)
+                contests['Month'] = contests['Start_Date'].dt.month_name().where(contests['Start_Date'].notna(), pd.NA)
+                contests['Month_Num'] = contests['Start_Date'].dt.month.where(contests['Start_Date'].notna(), pd.NA)
            
             if end_date_col:
                 contests[end_date_col] = safe_to_datetime(contests[end_date_col])
            
             if winner_date_col:
-                # Special handling for winner dates
                 contests[winner_date_col] = safe_to_datetime(contests[winner_date_col])
-                # If still NaT, try alternative parsing
-                if contests[winner_date_col].isna().any():
-                    # Try direct string parsing
-                    for idx, val in enumerate(contests[winner_date_col]):
-                        if pd.isna(val):
-                            orig_val = contests.iloc[idx][winner_date_col]
-                            if isinstance(orig_val, str):
-                                try:
-                                    # Try common date patterns
-                                    for fmt in ['%d-%m-%Y', '%d/%m/%Y', '%Y-%m-%d', '%d %b %Y']:
-                                        try:
-                                            parsed = datetime.strptime(orig_val.strip(), fmt)
-                                            contests.at[idx, winner_date_col] = parsed
-                                            break
-                                        except:
-                                            continue
-                                except:
-                                    pass
        
         # Process winner data - IMPROVED
         if not winners.empty:
@@ -573,6 +574,12 @@ if client:
                
                 # FIX: Direct calculation of running contests to ensure accuracy
                 if start_date_col and end_date_col:
+                    # Ensure dates are datetime objects
+                    if not pd.api.types.is_datetime64_any_dtype(contests[start_date_col]):
+                        contests[start_date_col] = safe_to_datetime(contests[start_date_col])
+                    if not pd.api.types.is_datetime64_any_dtype(contests[end_date_col]):
+                        contests[end_date_col] = safe_to_datetime(contests[end_date_col])
+                    
                     # Clear and recalculate running contests
                     running_mask = (
                         pd.notna(contests[start_date_col]) & 
@@ -763,7 +770,7 @@ if client:
                     st.info("No contests ended in the last 7 days")
        
         # ============================================
-        # FILTER CONTESTS SECTION
+        # FILTER CONTESTS SECTION - FIXED
         # ============================================
         elif section == "🔍 Filter Contests":
             st.header("🔍 Filter Contests")
@@ -778,8 +785,10 @@ if client:
                     # Get min and max dates safely
                     if start_date_col and pd.notna(contests[start_date_col]).any():
                         try:
-                            min_date = contests[start_date_col].min().date()
-                            max_date = contests[start_date_col].max().date()
+                            # Convert to date objects for the date input
+                            valid_dates = contests[start_date_col].dropna()
+                            min_date = valid_dates.min().date()
+                            max_date = valid_dates.max().date()
                         except:
                             min_date = date(current_year, 1, 1)
                             max_date = today
@@ -838,20 +847,68 @@ if client:
                     else:
                         selected_type = "All Types"
                
-                # Apply filters
+                # Apply filters - FIXED DATE FILTERING LOGIC
                 filtered_contests = contests.copy()
                
-                # Date range filter
+                # Debug: Show raw data for troubleshooting
+                if st.checkbox("🔧 Show debug info (for troubleshooting)"):
+                    st.write(f"Total contests: {len(contests)}")
+                    if start_date_col and start_date_col in contests.columns:
+                        st.write(f"Sample start dates (first 10):")
+                        sample_data = contests.head(10).copy()
+                        display_cols = []
+                        if camp_name_col: display_cols.append(camp_name_col)
+                        if start_date_col: display_cols.append(start_date_col)
+                        if end_date_col: display_cols.append(end_date_col)
+                        st.write(sample_data[display_cols])
+                       
+                        # Show data types
+                        st.write("**Date column data types:**")
+                        st.write(f"Start Date type: {type(contests[start_date_col].iloc[0]) if len(contests) > 0 else 'N/A'}")
+                        st.write(f"End Date type: {type(contests[end_date_col].iloc[0]) if len(contests) > 0 else 'N/A'}")
+                       
+                        # Show specific contest you mentioned
+                        target_contest = "CAMP-334434"
+                        if camp_name_col:
+                            specific_contest = contests[contests[camp_name_col].astype(str).str.contains(target_contest)]
+                            if not specific_contest.empty:
+                                st.write(f"**Specific contest ({target_contest}):**")
+                                st.write(specific_contest[[camp_name_col, start_date_col, end_date_col]])
+               
+                # Date range filter - FIXED
                 if start_date_col and end_date_col:
-                    # Filter by date range
-                    filtered_contests = filtered_contests[
-                        (filtered_contests[start_date_col].dt.date >= start_date) &
-                        (filtered_contests[end_date_col].dt.date <= end_date)
-                    ]
+                    # Make sure we have datetime objects
+                    if not pd.api.types.is_datetime64_any_dtype(filtered_contests[start_date_col]):
+                        filtered_contests[start_date_col] = safe_to_datetime(filtered_contests[start_date_col])
+                    if not pd.api.types.is_datetime64_any_dtype(filtered_contests[end_date_col]):
+                        filtered_contests[end_date_col] = safe_to_datetime(filtered_contests[end_date_col])
+                   
+                    # Filter by date range - FIXED LOGIC
+                    # We want contests that overlap with the selected date range
+                    date_mask = (
+                        # Contests that start within the range
+                        (
+                            (filtered_contests[start_date_col].dt.date >= start_date) &
+                            (filtered_contests[start_date_col].dt.date <= end_date)
+                        ) |
+                        # Contests that end within the range
+                        (
+                            (filtered_contests[end_date_col].dt.date >= start_date) &
+                            (filtered_contests[end_date_col].dt.date <= end_date)
+                        ) |
+                        # Contests that span the entire range
+                        (
+                            (filtered_contests[start_date_col].dt.date <= start_date) &
+                            (filtered_contests[end_date_col].dt.date >= end_date)
+                        )
+                    )
+                   
+                    # Apply the filter
+                    filtered_contests = filtered_contests[date_mask]
                
                 # Year filter
                 if selected_year != "All Years" and 'Year' in filtered_contests.columns:
-                    filtered_contests = filtered_contests[filtered_contests['Year'] == selected_year]
+                    filtered_contests = filtered_contests[filtered_contests['Year'] == int(selected_year)]
                
                 # Month filter
                 if selected_month != "All Months" and 'Month_Num' in filtered_contests.columns:
@@ -930,8 +987,41 @@ if client:
                         )
                 else:
                     st.info("No contests found for selected filters")
-            else:
-                st.warning("No contest data available")
+                    
+                    # Show troubleshooting help
+                    if st.checkbox("🛠️ Show troubleshooting tips", key="troubleshoot"):
+                        st.markdown("""
+                        **Common reasons why no contests are found:**
+                        1. **Date format mismatch**: Your sheet might use DD-MM-YYYY format while the app expects a different format
+                        2. **Date parsing issues**: Check if dates in your sheet are properly formatted
+                        3. **Date range too narrow**: Try selecting a wider date range
+                        4. **Month/Year filters**: Try removing month/year filters
+                        5. **Date overlap**: The contest might not overlap with your selected date range
+                        
+                        **Quick fixes:**
+                        - Try selecting "All Years" and "All Months"
+                        - Try a wider date range (e.g., whole month)
+                        - Check if your contest dates are in DD-MM-YYYY format (like 08-12-2025)
+                        """)
+                        
+                        if start_date_col in contests.columns:
+                            st.write("**Sample dates from your sheet (first 5):**")
+                            sample_dates = contests.head(5).copy()
+                            display_sample = []
+                            if camp_name_col: display_sample.append(camp_name_col)
+                            if start_date_col: display_sample.append(start_date_col)
+                            if end_date_col: display_sample.append(end_date_col)
+                            st.write(sample_dates[display_sample])
+                            
+                            # Check for the specific contest you mentioned
+                            search_term = "CAMP-334434"
+                            if camp_name_col:
+                                matching = contests[contests[camp_name_col].astype(str).str.contains(search_term, case=False, na=False)]
+                                if not matching.empty:
+                                    st.write(f"**Found contest '{search_term}':**")
+                                    st.write(matching[[camp_name_col, start_date_col, end_date_col]])
+    else:
+        st.warning("No contest data available")
        
         # ============================================
         # CHECK WINNERS SECTION
@@ -981,10 +1071,31 @@ if client:
                 filtered_winners = winners.copy()
                
                 if 'Start Date' in filtered_winners.columns and 'End Date' in filtered_winners.columns:
-                    filtered_winners = filtered_winners[
-                        (filtered_winners['Start Date'].dt.date >= winner_start_date) &
-                        (filtered_winners['End Date'].dt.date <= winner_end_date)
-                    ]
+                    # Make sure dates are datetime
+                    if not pd.api.types.is_datetime64_any_dtype(filtered_winners['Start Date']):
+                        filtered_winners['Start Date'] = safe_to_datetime(filtered_winners['Start Date'])
+                    if not pd.api.types.is_datetime64_any_dtype(filtered_winners['End Date']):
+                        filtered_winners['End Date'] = safe_to_datetime(filtered_winners['End Date'])
+                    
+                    # Filter by date range (overlap)
+                    date_mask = (
+                        # Winners with contests starting in range
+                        (
+                            (filtered_winners['Start Date'].dt.date >= winner_start_date) &
+                            (filtered_winners['Start Date'].dt.date <= winner_end_date)
+                        ) |
+                        # Winners with contests ending in range
+                        (
+                            (filtered_winners['End Date'].dt.date >= winner_start_date) &
+                            (filtered_winners['End Date'].dt.date <= winner_end_date)
+                        ) |
+                        # Winners with contests spanning the range
+                        (
+                            (filtered_winners['Start Date'].dt.date <= winner_start_date) &
+                            (filtered_winners['End Date'].dt.date >= winner_end_date)
+                        )
+                    )
+                    filtered_winners = filtered_winners[date_mask]
                 
                 # Gift Status Statistics
                 st.subheader("📊 Gift Delivery Status (for selected date range)")
