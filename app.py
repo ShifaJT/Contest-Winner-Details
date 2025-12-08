@@ -3,7 +3,6 @@ import pandas as pd
 from datetime import datetime, date, timedelta
 import gspread
 from google.oauth2.service_account import Credentials
-import hashlib
 
 # Simple connection
 def connect_sheets():
@@ -31,10 +30,10 @@ def safe_to_datetime(series):
     try:
         # First, ensure we're working with strings
         str_series = series.astype(str).str.strip()
-        
+       
         # Remove common issues
         str_series = str_series.replace(['NaT', 'NaN', 'nan', 'None', ''], pd.NA)
-        
+       
         # Try specific formats in order of likelihood
         formats_to_try = [
             '%d-%m-%Y',  # DD-MM-YYYY (your format)
@@ -46,9 +45,9 @@ def safe_to_datetime(series):
             '%d-%m-%y',  # DD-MM-YY
             '%d/%m/%y',  # DD/MM/YY
         ]
-        
+       
         result = pd.Series([pd.NaT] * len(series), dtype='datetime64[ns]')
-        
+       
         for fmt in formats_to_try:
             try:
                 parsed = pd.to_datetime(str_series, errors='coerce', format=fmt)
@@ -57,13 +56,13 @@ def safe_to_datetime(series):
                 result[mask] = parsed[mask]
             except:
                 continue
-        
+       
         # If we still have NaNs, try pandas' built-in parser with dayfirst=True
         if result.isna().any():
             final_try = pd.to_datetime(str_series, errors='coerce', dayfirst=True)
             mask = final_try.notna() & result.isna()
             result[mask] = final_try[mask]
-        
+       
         return result
     except Exception as e:
         return pd.NaT
@@ -75,21 +74,21 @@ def get_contest_status(start_date, end_date, today):
         # Handle NaT values
         if pd.isna(start_date) or pd.isna(end_date):
             return 'unknown'
-        
+       
         # Ensure we have datetime objects
         if not isinstance(start_date, (pd.Timestamp, datetime)):
             start_date = pd.to_datetime(start_date, errors='coerce')
         if not isinstance(end_date, (pd.Timestamp, datetime)):
             end_date = pd.to_datetime(end_date, errors='coerce')
-        
+       
         # Check again after conversion
         if pd.isna(start_date) or pd.isna(end_date):
             return 'unknown'
-        
+       
         # Get date objects
         start_date_obj = start_date.date() if hasattr(start_date, 'date') else pd.to_datetime(start_date).date()
         end_date_obj = end_date.date() if hasattr(end_date, 'date') else pd.to_datetime(end_date).date()
-        
+       
         # Determine status
         if start_date_obj > today:
             return 'upcoming'
@@ -100,205 +99,32 @@ def get_contest_status(start_date, end_date, today):
     except Exception as e:
         return 'unknown'
 
-# Function to create nice contest cards - IMPROVED with Gift, Gift Link, and Banner Preview
+# Function to create nice contest cards - IMPROVED with Gift, Gift Link, and Banner Link
 def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_date_col,
                        winner_date_col, kam_col, to_whom_col, eligibility_col, gift_col, gift_link_col, banner_link_col, status):
-    """Create a nice looking contest card with banner preview"""
+    """Create a nice looking contest card with banner link"""
     camp_name = row[camp_name_col] if camp_name_col and camp_name_col in row and pd.notna(row[camp_name_col]) else 'N/A'
     camp_type = row[camp_type_col] if camp_type_col and camp_type_col in row and pd.notna(row[camp_type_col]) else 'N/A'
-    
+   
     # Get contest eligibility
     contest_eligibility = row[eligibility_col] if eligibility_col and eligibility_col in row and pd.notna(row[eligibility_col]) else 'N/A'
-    
+   
     # Get gift and gift link
     gift = row[gift_col] if gift_col and gift_col in row and pd.notna(row[gift_col]) else 'N/A'
     gift_link = row[gift_link_col] if gift_link_col and gift_link_col in row and pd.notna(row[gift_link_col]) else 'N/A'
-    
+   
     # Get banner link
     banner_link = row[banner_link_col] if banner_link_col and banner_link_col in row and pd.notna(row[banner_link_col]) else None
-    
+   
     # Format gift link as clickable if it exists
     gift_display = gift
     if gift_link != 'N/A' and gift_link and gift_link != '':
         gift_display = f'<a href="{gift_link}" target="_blank" style="color: white; text-decoration: underline;">{gift}</a>'
-    
-    # Format camp name
+   
+    # Format camp name as clickable if banner link exists
     camp_name_display = camp_name
-    banner_preview_html = ""
-    
     if banner_link and banner_link != 'N/A' and banner_link != '':
-        # Create a unique ID for modal
-        banner_hash = hashlib.md5(str(banner_link).encode()).hexdigest()[:8]
-        modal_id = f"banner_modal_{banner_hash}"
-        
-        # Create banner preview with modal
-        banner_preview_html = f"""
-        <div style="margin-top: 10px; margin-bottom: 15px;">
-            <div style="
-                background: rgba(255,255,255,0.1);
-                border-radius: 8px;
-                padding: 10px;
-                border: 1px solid rgba(255,255,255,0.2);
-            ">
-                <div style="
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    margin-bottom: 5px;
-                ">
-                    <small style="color: rgba(255,255,255,0.8);">🎨 Banner Preview:</small>
-                    <button onclick="document.getElementById('{modal_id}').style.display='block'" 
-                            style="
-                                background: rgba(255,255,255,0.2);
-                                color: white;
-                                border: none;
-                                padding: 3px 10px;
-                                border-radius: 4px;
-                                font-size: 11px;
-                                cursor: pointer;
-                                text-decoration: underline;
-                            ">
-                        🔍 View Full Image
-                    </button>
-                </div>
-                <div style="
-                    width: 100%;
-                    height: 80px;
-                    border-radius: 6px;
-                    overflow: hidden;
-                    background: rgba(0,0,0,0.2);
-                    cursor: pointer;
-                    position: relative;
-                " onclick="document.getElementById('{modal_id}').style.display='block'">
-                    <img src="{banner_link}" 
-                         alt="Banner Preview" 
-                         style="
-                            width: 100%;
-                            height: 100%;
-                            object-fit: contain;
-                            background: rgba(0,0,0,0.1);
-                         "
-                         onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'display: flex; align-items: center; justify-content: center; height: 100%; color: rgba(255,255,255,0.6);\\'>🎨 Image not available</div>';">
-                    <div style="
-                        position: absolute;
-                        bottom: 0;
-                        left: 0;
-                        right: 0;
-                        background: rgba(0,0,0,0.7);
-                        color: white;
-                        font-size: 10px;
-                        padding: 2px 5px;
-                        text-align: center;
-                    ">
-                        Click to view full image
-                    </div>
-                </div>
-                <div style="margin-top: 5px; font-size: 10px; color: rgba(255,255,255,0.7); text-align: center;">
-                    <a href="{banner_link}" target="_blank" style="color: rgba(255,255,255,0.8); text-decoration: underline; margin-right: 10px;">
-                        📥 Download Image
-                    </a>
-                    <span onclick="navigator.clipboard.writeText('{banner_link}'); alert('Link copied to clipboard!');" 
-                          style="cursor: pointer; color: rgba(255,255,255,0.8); text-decoration: underline;">
-                        📋 Copy Link
-                    </span>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Modal for full image view -->
-        <div id="{modal_id}" style="
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.9);
-            padding: 20px;
-            box-sizing: border-box;
-        ">
-            <div style="
-                position: relative;
-                width: 100%;
-                height: 100%;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-            ">
-                <button onclick="document.getElementById('{modal_id}').style.display='none'" 
-                        style="
-                            position: absolute;
-                            top: 20px;
-                            right: 30px;
-                            background: #ff4444;
-                            color: white;
-                            border: none;
-                            padding: 10px 15px;
-                            border-radius: 5px;
-                            font-size: 16px;
-                            cursor: pointer;
-                            z-index: 1001;
-                        ">
-                    ✕ Close
-                </button>
-                
-                <div style="
-                    max-width: 90%;
-                    max-height: 80%;
-                    overflow: auto;
-                    text-align: center;
-                ">
-                    <img src="{banner_link}" 
-                         alt="Banner Full View" 
-                         style="
-                            max-width: 100%;
-                            max-height: 100%;
-                            object-fit: contain;
-                            border-radius: 8px;
-                         "
-                         onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'color: white; padding: 40px; text-align: center;\\'><h3>Image not available</h3><p>The image could not be loaded.</p><a href=\\'{banner_link}\\' target=\\'_blank\\' style=\\"color: #4CAF50; text-decoration: underline;\\">Try downloading directly</a></div>';">
-                </div>
-                
-                <div style="
-                    margin-top: 20px;
-                    color: white;
-                    text-align: center;
-                    max-width: 80%;
-                ">
-                    <div style="margin-bottom: 10px;">
-                        <a href="{banner_link}" 
-                           target="_blank" 
-                           style="
-                                background: #4CAF50;
-                                color: white;
-                                padding: 8px 20px;
-                                border-radius: 5px;
-                                text-decoration: none;
-                                margin-right: 10px;
-                           ">
-                            📥 Download Image
-                        </a>
-                        <button onclick="navigator.clipboard.writeText('{banner_link}'); alert('Link copied to clipboard!');"
-                                style="
-                                    background: #2196F3;
-                                    color: white;
-                                    border: none;
-                                    padding: 8px 20px;
-                                    border-radius: 5px;
-                                    cursor: pointer;
-                                ">
-                            📋 Copy Link
-                        </button>
-                    </div>
-                    <div style="font-size: 12px; color: #aaa; margin-top: 10px; word-break: break-all;">
-                        {banner_link}
-                    </div>
-                </div>
-            </div>
-        </div>
-        """
+        camp_name_display = f'<a href="{banner_link}" target="_blank" style="color: white; text-decoration: underline;">{camp_name} 🔗</a>'
    
     # Format start date
     start_date = 'N/A'
@@ -343,7 +169,7 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
                 date_str = str(row[winner_date_col]).strip()
                 # Common date patterns
                 patterns = ['%d-%m-%Y', '%d/%m/%Y', '%Y-%m-%d', '%d %b %Y', '%d %B %Y', '%m/%d/%Y']
-                
+               
                 parsed_date = None
                 for pattern in patterns:
                     try:
@@ -351,7 +177,7 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
                         break
                     except:
                         continue
-                
+               
                 if parsed_date:
                     winner_date = parsed_date.strftime('%d %b %Y')
                 else:
@@ -375,7 +201,7 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
                 end_date_obj = row[end_date_col].date()
             else:
                 end_date_obj = pd.to_datetime(row[end_date_col], dayfirst=True).date()
-            
+           
             today = datetime.now().date()
             days_left_int = (end_date_obj - today).days
             if days_left_int >= 0:
@@ -394,7 +220,7 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
         gradient = "linear-gradient(135deg, #9e9e9e 0%, #616161 100%)"  # Grey for past
         badge = "✅ COMPLETED"
    
-    # Create card with contest eligibility, gift, gift link, and banner preview
+    # Create card with contest eligibility, gift, gift link, and banner link
     card_html = f"""
     <div class="contest-card" style="
         background: {gradient};
@@ -409,9 +235,6 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
             {badge}
         </div>
         <h3 style="margin: 0 0 10px 0; color: white; padding-right: 80px;">{camp_name_display}</h3>
-        
-        {banner_preview_html}
-        
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <div>
                 <strong>🎯 Type:</strong> {camp_type}<br>
@@ -449,23 +272,23 @@ st.markdown("""
         padding: 0;
         box-sizing: border-box;
     }
-    
+   
     /* Common styles for all elements */
     body, .stApp, .main .block-container {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
         transition: all 0.3s ease;
     }
-    
+   
     /* Force all text to be visible */
     h1, h2, h3, h4, h5, h6, p, span, div, label, strong, em, small, .stMarkdown, .stText, .stAlert, .stInfo, .stSuccess, .stWarning, .stError {
         color: inherit !important;
     }
-    
+   
     /* Common styles for UI components */
     .stRadio > div > label > div:first-child {
         background-color: #4CAF50 !important;
     }
-    
+   
     .gift-delivered {
         background-color: #4CAF50 !important;
         color: white !important;
@@ -475,7 +298,7 @@ st.markdown("""
         font-weight: bold !important;
         display: inline-block !important;
     }
-    
+   
     .gift-pending {
         background-color: #FF9800 !important;
         color: white !important;
@@ -485,7 +308,7 @@ st.markdown("""
         font-weight: bold !important;
         display: inline-block !important;
     }
-    
+   
     .gift-not-found {
         background-color: #F44336 !important;
         color: white !important;
@@ -495,32 +318,32 @@ st.markdown("""
         font-weight: bold !important;
         display: inline-block !important;
     }
-    
+   
     /* Ensure contest cards have good contrast */
     .contest-card h3 {
         color: white !important;
     }
-    
+   
     .contest-card div {
         color: white !important;
     }
-    
+   
     /* Main container styling */
     .main .block-container {
         background-color: transparent !important;
     }
-    
+   
     /* Light theme specific styles */
     [data-theme="light"] {
         color: #262730 !important;
         background-color: #FFFFFF !important;
     }
-    
+   
     [data-theme="light"] .stApp {
         background-color: #FFFFFF !important;
         color: #262730 !important;
     }
-    
+   
     [data-theme="light"] .stRadio > div {
         background-color: #f8f9fa !important;
         padding: 10px !important;
@@ -528,11 +351,11 @@ st.markdown("""
         border: 1px solid #dee2e6 !important;
         color: #262730 !important;
     }
-    
+   
     [data-theme="light"] .stRadio label {
         color: #262730 !important;
     }
-    
+   
     [data-theme="light"] .stDateInput > div > div > input,
     [data-theme="light"] .stSelectbox > div > div > select,
     [data-theme="light"] .stTextInput > div > div > input {
@@ -541,48 +364,48 @@ st.markdown("""
         border: 2px solid #667eea !important;
         border-radius: 5px !important;
     }
-    
+   
     [data-theme="light"] .stDataFrame {
         background-color: white !important;
         color: #262730 !important;
     }
-    
+   
     [data-theme="light"] .stDataFrame th {
         background-color: #f8f9fa !important;
         color: #262730 !important;
     }
-    
+   
     [data-theme="light"] .stDataFrame td {
         background-color: white !important;
         color: #262730 !important;
     }
-    
+   
     [data-theme="light"] .stExpander > div > div {
         background-color: #f8f9fa !important;
         color: #262730 !important;
     }
-    
+   
     [data-theme="light"] [data-testid="stMetricValue"],
     [data-theme="light"] [data-testid="stMetricLabel"] {
         color: #262730 !important;
     }
-    
+   
     /* Dark theme specific styles - ENHANCED */
     [data-theme="dark"] {
         color: #FAFAFA !important;
         background-color: #0E1117 !important;
     }
-    
+   
     [data-theme="dark"] .stApp {
         background-color: #0E1117 !important;
         color: #FAFAFA !important;
     }
-    
+   
     /* Force all text in dark mode to be light */
     [data-theme="dark"] * {
         color: #FAFAFA !important;
     }
-    
+   
     [data-theme="dark"] .stRadio > div {
         background-color: #262730 !important;
         padding: 10px !important;
@@ -590,11 +413,11 @@ st.markdown("""
         border: 1px solid #444 !important;
         color: #FAFAFA !important;
     }
-    
+   
     [data-theme="dark"] .stRadio label {
         color: #FAFAFA !important;
     }
-    
+   
     [data-theme="dark"] .stDateInput > div > div > input,
     [data-theme="dark"] .stSelectbox > div > div > select,
     [data-theme="dark"] .stTextInput > div > div > input {
@@ -603,183 +426,183 @@ st.markdown("""
         border: 2px solid #667eea !important;
         border-radius: 5px !important;
     }
-    
+   
     [data-theme="dark"] .stDateInput > div > div > input::placeholder {
         color: #AAAAAA !important;
     }
-    
+   
     [data-theme="dark"] .stDataFrame {
         background-color: #262730 !important;
         color: #FAFAFA !important;
     }
-    
+   
     [data-theme="dark"] .stDataFrame th {
         background-color: #1a1a24 !important;
         color: #FAFAFA !important;
     }
-    
+   
     [data-theme="dark"] .stDataFrame td {
         background-color: #262730 !important;
         color: #FAFAFA !important;
     }
-    
+   
     [data-theme="dark"] .stExpander > div > div {
         background-color: #262730 !important;
         color: #FAFAFA !important;
     }
-    
+   
     [data-theme="dark"] .stAlert {
         background-color: #262730 !important;
         color: #FAFAFA !important;
         border-color: #444 !important;
     }
-    
+   
     [data-theme="dark"] .stSuccess {
         background-color: #1a472a !important;
         color: #FAFAFA !important;
     }
-    
+   
     [data-theme="dark"] .stInfo {
         background-color: #1a3a5f !important;
         color: #FAFAFA !important;
     }
-    
+   
     [data-theme="dark"] .stWarning {
         background-color: #5d4037 !important;
         color: #FAFAFA !important;
     }
-    
+   
     [data-theme="dark"] .stError {
         background-color: #7f1d1d !important;
         color: #FAFAFA !important;
     }
-    
+   
     [data-theme="dark"] [data-testid="stMetricValue"],
     [data-theme="dark"] [data-testid="stMetricLabel"] {
         color: #FAFAFA !important;
     }
-    
+   
     /* Calendar styling for dark mode */
     [data-theme="dark"] .rdrCalendarWrapper {
         background-color: #262730 !important;
         color: #FAFAFA !important;
     }
-    
+   
     [data-theme="dark"] .rdrDateDisplay {
         background-color: #1a1a24 !important;
         color: #FAFAFA !important;
     }
-    
+   
     [data-theme="dark"] .rdrMonthAndYearWrapper {
         background-color: #262730 !important;
         color: #FAFAFA !important;
     }
-    
+   
     [data-theme="dark"] .rdrMonthName {
         color: #FAFAFA !important;
     }
-    
+   
     [data-theme="dark"] .rdrWeekDay {
         color: #FAFAFA !important;
     }
-    
+   
     [data-theme="dark"] .rdrDay {
         color: #FAFAFA !important;
     }
-    
+   
     [data-theme="dark"] .rdrDayNumber span {
         color: #FAFAFA !important;
     }
-    
+   
     /* Sidebar styling */
     .stSidebar {
         background-color: transparent !important;
     }
-    
+   
     [data-theme="light"] .stSidebar * {
         color: #262730 !important;
     }
-    
+   
     [data-theme="dark"] .stSidebar * {
         color: #FAFAFA !important;
     }
-    
+   
     /* Button styling */
     .stButton > button {
         border-radius: 5px !important;
     }
-    
+   
     [data-theme="light"] .stButton > button {
         background-color: #4CAF50 !important;
         color: white !important;
     }
-    
+   
     [data-theme="dark"] .stButton > button {
         background-color: #4CAF50 !important;
         color: white !important;
     }
-    
+   
     /* ============================================ */
     /* FIX FOR RECENTLY ENDED CONTESTS SECTION      */
     /* ============================================ */
-    
+   
     /* Light mode styling for Recently Ended Contests */
     [data-theme="light"] .recently-ended-container {
         background-color: #f8f9fa !important;
         color: #262730 !important;
     }
-    
+   
     [data-theme="light"] .recently-ended-card {
         background-color: #ffffff !important;
         color: #262730 !important;
         border: 1px solid #dee2e6 !important;
         border-left: 4px solid #764ba2 !important;
     }
-    
+   
     [data-theme="light"] .recently-ended-card strong {
         color: #262730 !important;
     }
-    
+   
     [data-theme="light"] .recently-ended-card small {
         color: #6c757d !important;
     }
-    
+   
     /* Dark mode styling for Recently Ended Contests */
     [data-theme="dark"] .recently-ended-container {
         background-color: #262730 !important;
         color: #FAFAFA !important;
     }
-    
+   
     [data-theme="dark"] .recently-ended-card {
         background-color: #1a1a24 !important;
         color: #FAFAFA !important;
         border: 1px solid #444 !important;
         border-left: 4px solid #667eea !important;
     }
-    
+   
     [data-theme="dark"] .recently-ended-card strong {
         color: #FAFAFA !important;
     }
-    
+   
     [data-theme="dark"] .recently-ended-card small {
         color: #AAAAAA !important;
     }
-    
+   
     /* Styling for the Recently Ended Contests header */
     [data-theme="light"] .recently-ended-header {
         color: #262730 !important;
     }
-    
+   
     [data-theme="dark"] .recently-ended-header {
         color: #FAFAFA !important;
     }
-    
+   
     /* Style for clickable contest names */
     .contest-card h3 a {
         text-decoration: underline !important;
         transition: all 0.2s ease !important;
     }
-    
+   
     .contest-card h3 a:hover {
         opacity: 0.8 !important;
     }
@@ -838,25 +661,25 @@ if client:
             camp_type_col = find_column(contests, ['Camp Type', 'Type', 'Category'])
             start_date_col = find_column(contests, ['Start Date', 'StartDate', 'Start'])
             end_date_col = find_column(contests, ['End Date', 'EndDate', 'End'])
-            
+           
             # IMPROVED: Better winner date column detection
             winner_date_col = find_column(contests, [
-                'Winner Announcement Date', 
-                'Winner Date', 
+                'Winner Announcement Date',
+                'Winner Date',
                 'Announcement Date',
                 'Winner Announcement',
                 'Winner Ann Date',
                 'Winner_Announcement_Date'
             ])
-            
+           
             kam_col = find_column(contests, ['KAM', 'Owner', 'Manager', 'Responsible'])
             to_whom_col = find_column(contests, ['To Whom?', 'To Whom', 'Assigned To', 'Team'])
             eligibility_col = find_column(contests, ['Contest Eligiblity', 'Contest Eligibility', 'Eligibility', 'Contest Eligiblity '])
-            
+           
             # ADDED: Gift and Gift Link columns
             gift_col = find_column(contests, ['Gift', 'Prize', 'Reward'])
             gift_link_col = find_column(contests, ['Gift Link', 'Link', 'URL', 'Gift URL'])
-            
+           
             # ADDED: Banner Link column detection
             banner_link_col = find_column(contests, ['Image Link 2 (HP / OP Banner)', 'Banner URL', 'Banner', 'Image URL', 'Image', 'Banner Link', 'Image Link'])
            
@@ -882,7 +705,7 @@ if client:
             for col in date_cols:
                 if col in winners.columns:
                     winners[col] = safe_to_datetime(winners[col])
-            
+           
             # Find Gift Status column (handle different possible names)
             gift_status_col = find_column(winners, ['Gift Status', 'GiftStatus', 'Status', 'Delivery Status', 'Gift_Status'])
        
@@ -930,27 +753,27 @@ if client:
                         contests[start_date_col] = safe_to_datetime(contests[start_date_col])
                     if not pd.api.types.is_datetime64_any_dtype(contests[end_date_col]):
                         contests[end_date_col] = safe_to_datetime(contests[end_date_col])
-                    
+                   
                     # Clear and recalculate running contests
                     running_mask = (
-                        pd.notna(contests[start_date_col]) & 
+                        pd.notna(contests[start_date_col]) &
                         pd.notna(contests[end_date_col]) &
-                        (contests[start_date_col].dt.date <= today) & 
+                        (contests[start_date_col].dt.date <= today) &
                         (contests[end_date_col].dt.date >= today)
                     )
                     running_contests = contests[running_mask].copy()
                     running_contests['Status'] = 'running'
-                    
+                   
                     # Update other statuses
                     upcoming_mask = (
-                        pd.notna(contests[start_date_col]) & 
+                        pd.notna(contests[start_date_col]) &
                         (contests[start_date_col].dt.date > today)
                     )
                     upcoming_contests = contests[upcoming_mask].copy()
                     upcoming_contests['Status'] = 'upcoming'
-                    
+                   
                     past_mask = (
-                        pd.notna(contests[end_date_col]) & 
+                        pd.notna(contests[end_date_col]) &
                         (contests[end_date_col].dt.date < today)
                     )
                     past_contests = contests[past_mask].copy()
@@ -1023,11 +846,11 @@ if client:
                    
                     st.markdown("---")
                    
-                    # Show running contest cards WITH BANNER PREVIEW
+                    # Show running contest cards WITH BANNER LINK
                     for _, row in running_contests.iterrows():
                         card_html = create_contest_card(
                             row, camp_name_col, camp_type_col, start_date_col, end_date_col,
-                            winner_date_col, kam_col, to_whom_col, eligibility_col, 
+                            winner_date_col, kam_col, to_whom_col, eligibility_col,
                             gift_col, gift_link_col, banner_link_col, status='running'
                         )
                         st.markdown(card_html, unsafe_allow_html=True)
@@ -1044,17 +867,17 @@ if client:
                    
                     # Group by month for better organization
                     upcoming_contests['Month_Year'] = upcoming_contests[start_date_col].dt.strftime('%B %Y')
-                    months_sorted = sorted(upcoming_contests['Month_Year'].unique(), 
+                    months_sorted = sorted(upcoming_contests['Month_Year'].unique(),
                                           key=lambda x: datetime.strptime(x, '%B %Y'))
-                    
+                   
                     for month_year in months_sorted:
                         month_contests = upcoming_contests[upcoming_contests['Month_Year'] == month_year]
-                        
+                       
                         st.markdown(f"### 📅 {month_year}")
-                        
+                       
                         # Show stats for this month's contests
                         up_stats_col1, up_stats_col2 = st.columns(2)
-                        
+                       
                         with up_stats_col1:
                             # Days to next contest in this month
                             try:
@@ -1063,16 +886,16 @@ if client:
                                 st.metric("Days to First Contest", days_to_next if days_to_next > 0 else 0)
                             except:
                                 st.metric("Days to First Contest", "N/A")
-                        
+                       
                         with up_stats_col2:
                             # Contest eligibilities in this month
                             if eligibility_col and eligibility_col in month_contests.columns:
                                 upcoming_eligibilities = month_contests[eligibility_col].nunique()
                                 st.metric("Eligibility Types", upcoming_eligibilities)
-                        
+                       
                         st.markdown("---")
-                        
-                        # Show this month's contest cards WITH BANNER PREVIEW
+                       
+                        # Show this month's contest cards WITH BANNER LINK
                         for _, row in month_contests.iterrows():
                             card_html = create_contest_card(
                                 row, camp_name_col, camp_type_col, start_date_col, end_date_col,
@@ -1080,7 +903,7 @@ if client:
                                 gift_col, gift_link_col, banner_link_col, status='upcoming'
                             )
                             st.markdown(card_html, unsafe_allow_html=True)
-                        
+                       
                         st.markdown("<br>", unsafe_allow_html=True)
                 else:
                     st.subheader("📅 Upcoming Contests")
@@ -1091,10 +914,10 @@ if client:
                 # ============================================
                 if not recently_ended.empty:
                     st.subheader("✅ Recently Ended Contests (Last 7 Days)")
-                    
+                   
                     # Add a container with a class for styling
                     st.markdown('<div class="recently-ended-container">', unsafe_allow_html=True)
-                    
+                   
                     # Show in a compact grid
                     cols = st.columns(3)
                     for idx, (_, row) in enumerate(recently_ended.head(9).iterrows()):  # Show max 9
@@ -1107,64 +930,29 @@ if client:
                                     end_date = row[end_date_col].strftime('%d %b')
                                 else:
                                     end_date = str(row[end_date_col])
-                            
+                           
                             # ADDED: Show gift in recently ended contests
                             gift = row[gift_col] if gift_col and gift_col in row and pd.notna(row[gift_col]) else 'N/A'
-                            
-                            # ADDED: Simple banner preview for recently ended contests
-                            banner_preview_simple = ""
+                           
+                            # ADDED: Make camp name clickable if banner link exists
+                            camp_name_display = camp_name
                             if banner_link_col and banner_link_col in row and pd.notna(row[banner_link_col]) and row[banner_link_col] not in ['', 'N/A']:
                                 banner_link = row[banner_link_col]
-                                banner_preview_simple = f"""
-                                <div style="
-                                    width: 100%;
-                                    height: 40px;
-                                    border-radius: 4px;
-                                    overflow: hidden;
-                                    margin: 5px 0;
-                                    background: rgba(0,0,0,0.1);
-                                    position: relative;
-                                ">
-                                    <img src="{banner_link}" 
-                                         alt="Banner" 
-                                         style="
-                                            width: 100%;
-                                            height: 100%;
-                                            object-fit: cover;
-                                         "
-                                         onerror="this.style.display='none';">
-                                    <div style="
-                                        position: absolute;
-                                        bottom: 0;
-                                        left: 0;
-                                        right: 0;
-                                        background: rgba(0,0,0,0.7);
-                                        color: white;
-                                        font-size: 8px;
-                                        padding: 1px 3px;
-                                        text-align: center;
-                                    ">
-                                        <a href="{banner_link}" target="_blank" style="color: white; text-decoration: underline;">
-                                            View Banner
-                                        </a>
-                                    </div>
-                                </div>
-                                """
-                            
+                                camp_name_display = f'<a href="{banner_link}" target="_blank" style="color: inherit; text-decoration: underline;">{camp_name} 🔗</a>'
+                           
                             st.markdown(f"""
                             <div class="recently-ended-card" style="
                                 border-radius: 8px;
                                 padding: 15px;
                                 margin: 5px 0;
                             ">
-                                {banner_preview_simple}
-                                <strong>{camp_name}</strong><br>
+                                <strong>{camp_name_display}</strong><br>
                                 <small>Type: {camp_type}</small><br>
                                 <small>Gift: {gift}</small><br>
                                 <small>Ended: {end_date}</small>
                             </div>
                             """, unsafe_allow_html=True)
-                    
+                   
                     st.markdown('</div>', unsafe_allow_html=True)
                 else:
                     st.subheader("✅ Recently Ended Contests (Last 7 Days)")
@@ -1262,7 +1050,7 @@ if client:
                         selected_type = st.selectbox("Campaign Type", camp_types, index=0, key="contest_type")
                     else:
                         selected_type = "All Types"
-                
+               
                 with col4:
                     # ADDED: Gift filter
                     if gift_col and pd.notna(contests[gift_col]).any():
@@ -1343,7 +1131,7 @@ if client:
                 # Camp Type filter
                 if selected_type != "All Types" and camp_type_col and camp_type_col in filtered_contests.columns:
                     filtered_contests = filtered_contests[filtered_contests[camp_type_col] == selected_type]
-                
+               
                 # ADDED: Gift filter
                 if selected_gift != "All Gifts" and gift_col and gift_col in filtered_contests.columns:
                     filtered_contests = filtered_contests[filtered_contests[gift_col] == selected_gift]
@@ -1354,10 +1142,10 @@ if client:
                 if not filtered_contests.empty:
                     # Calculate status for filtered contests
                     filtered_contests['Status'] = filtered_contests.apply(
-                        lambda row: get_contest_status(row[start_date_col], row[end_date_col], today), 
+                        lambda row: get_contest_status(row[start_date_col], row[end_date_col], today),
                         axis=1
                     )
-                    
+                   
                     # Stats
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
@@ -1425,7 +1213,7 @@ if client:
                         )
                 else:
                     st.info("No contests found for selected filters")
-                    
+                   
                     # Show troubleshooting help
                     if st.checkbox("🛠️ Show troubleshooting tips", key="troubleshoot"):
                         st.markdown("""
@@ -1435,13 +1223,13 @@ if client:
                         3. **Date range too narrow**: Try selecting a wider date range
                         4. **Month/Year filters**: Try removing month/year filters
                         5. **Date overlap**: The contest might not overlap with your selected date range
-                        
+                       
                         **Quick fixes:**
                         - Try selecting "All Years" and "All Months"
                         - Try a wider date range (e.g., whole month)
                         - Check if your contest dates are in DD-MM-YYYY format (like 08-12-2025)
                         """)
-                        
+                       
                         if start_date_col in contests.columns:
                             st.write("**Sample dates from your sheet (first 5):**")
                             sample_dates = contests.head(5).copy()
@@ -1450,7 +1238,7 @@ if client:
                             if start_date_col: display_sample.append(start_date_col)
                             if end_date_col: display_sample.append(end_date_col)
                             st.write(sample_dates[display_sample])
-                            
+                           
                             # Check for the specific contest you mentioned
                             search_term = "CAMP-334434"
                             if camp_name_col:
@@ -1517,7 +1305,7 @@ if client:
                         filtered_winners['Start Date'] = safe_to_datetime(filtered_winners['Start Date'])
                     if not pd.api.types.is_datetime64_any_dtype(filtered_winners['End Date']):
                         filtered_winners['End Date'] = safe_to_datetime(filtered_winners['End Date'])
-                    
+                   
                     # Filter by date range (overlap)
                     date_mask = (
                         # Winners with contests starting in range
@@ -1537,15 +1325,15 @@ if client:
                         )
                     )
                     filtered_winners = filtered_winners[date_mask]
-                
+               
                 # Gift Status Statistics
                 st.subheader("📊 Gift Delivery Status (for selected date range)")
-                
+               
                 if gift_status_col and gift_status_col in filtered_winners.columns:
                     gift_stats = filtered_winners[gift_status_col].value_counts()
-                    
+                   
                     col1, col2, col3, col4 = st.columns(4)
-                    
+                   
                     with col1:
                         st.metric("Total Winners", len(filtered_winners))
                     with col2:
@@ -1562,12 +1350,12 @@ if client:
                             st.metric("Delivery Rate", "0%")
                 else:
                     st.metric("Total Winners", len(filtered_winners))
-                
+               
                 st.markdown("---")
-                
+               
                 # Winner search section
                 st.subheader("🔍 Search Winner")
-                
+               
                 # Use radio buttons for search option
                 search_option = st.radio(
                     "Search by:",
@@ -1575,7 +1363,7 @@ if client:
                     horizontal=True,
                     key="winner_search_option"
                 )
-                
+               
                 # Create a highlighted search area
                 with st.container():
                     if search_option == "BZID":
@@ -1590,12 +1378,12 @@ if client:
                     else:
                         search_col = 'customer_firstname'
                         placeholder = "Enter customer name"
-                    
+                   
                     # Use a form for better UX
                     with st.form(key="search_form"):
                         # Add clear label and instructions
                         st.markdown(f"**Please enter the {search_option} to search:**")
-                        
+                       
                         # Create a more visible input field
                         col1, col2 = st.columns([3, 1])
                         with col1:
@@ -1607,7 +1395,7 @@ if client:
                             )
                         with col2:
                             search_submitted = st.form_submit_button("🔍 Search", use_container_width=True)
-                
+               
                 # Process search
                 if search_input and search_col in filtered_winners.columns:
                     # Clean and search within filtered winners
@@ -1656,7 +1444,7 @@ if client:
                                                     end_date_str = end_date_val.strftime('%d-%m-%Y')
                                                 else:
                                                     end_date_str = str(end_date_val)
-                                            
+                                           
                                             if pd.notna(winner_date_val):
                                                 if hasattr(winner_date_val, 'strftime'):
                                                     winner_date_str = winner_date_val.strftime('%d-%m-%Y')
@@ -1676,7 +1464,7 @@ if client:
                                             phone = row.get('customer_phonenumber', 'N/A')
                                             store = row.get('business_displayname', 'N/A')
                                             bzid_val = row.get('businessid', 'N/A')
-                                            
+                                           
                                             st.markdown(f"""
                                             **Name:** {winner_name}  
                                             **Phone:** {phone}  
@@ -1684,7 +1472,7 @@ if client:
                                             **BZID:** {bzid_val}  
                                             **Winner Date:** {winner_date_str}
                                             """)
-                                            
+                                           
                                             # Display Gift Status with badge
                                             if gift_status_col and gift_status_col in row:
                                                 gift_status_val = row[gift_status_col]
@@ -1697,7 +1485,7 @@ if client:
                                                         gift_status_class = "gift-pending"
                                                     else:
                                                         gift_status_class = "gift-not-found"
-                                                    
+                                                   
                                                     st.markdown(f"**Gift Status:** <span class='{gift_status_class}'>{gift_status_str}</span>", unsafe_allow_html=True)
                                                 else:
                                                     st.markdown("**Gift Status:** N/A")
@@ -1714,7 +1502,7 @@ if client:
                         for idx, (_, row) in enumerate(recent_winners.iterrows()):
                             # Get gift status value
                             gift_status_val = row.get(gift_status_col, 'N/A') if gift_status_col else 'N/A'
-                            
+                           
                             # Determine badge color
                             if gift_status_val == 'Delivered':
                                 badge_color = "🟢"
@@ -1722,7 +1510,7 @@ if client:
                                 badge_color = "🟡"
                             else:
                                 badge_color = "🔴"
-                            
+                           
                             with st.expander(f"{badge_color} {row.get('customer_firstname', 'N/A')} won {row.get('Gift', 'N/A')} - Status: {gift_status_val}", expanded=False):
                                 st.markdown(f"""
                                 **Contest:** {row.get('Camp Description', 'N/A')}  
@@ -1730,12 +1518,12 @@ if client:
                                 **Store:** {row.get('business_displayname', 'N/A')}  
                                 **Gift Status:** **{gift_status_val}**
                                 """)
-                
+               
                 # Download winners data
                 if len(filtered_winners) > 0:
                     st.markdown("---")
                     st.subheader("📥 Download Winners Data")
-                    
+                   
                     # Create a downloadable CSV
                     download_cols = [
                         'Camp Description', 'Contest', 'Gift', 'Start Date', 'End Date',
@@ -1743,24 +1531,24 @@ if client:
                         'customer_firstname', 'business_displayname', 'address_addresslocality',
                         'Winner Announcement Date'
                     ]
-                    
+                   
                     # Add Gift Status column if available
                     if gift_status_col and gift_status_col in filtered_winners.columns:
                         download_cols.append(gift_status_col)
-                    
+                   
                     # Filter to only available columns
                     available_cols = [col for col in download_cols if col in filtered_winners.columns]
                     download_df = filtered_winners[available_cols].copy()
-                    
+                   
                     # Format dates for download
                     for date_col in ['Start Date', 'End Date', 'Winner Announcement Date']:
                         if date_col in download_df.columns:
                             download_df[date_col] = download_df[date_col].apply(
                                 lambda x: x.strftime('%d-%m-%Y') if pd.notna(x) and hasattr(x, 'strftime') else str(x)
                             )
-                    
+                   
                     csv_data = download_df.to_csv(index=False).encode('utf-8')
-                    
+                   
                     st.download_button(
                         "📥 Download Winners List",
                         csv_data,
