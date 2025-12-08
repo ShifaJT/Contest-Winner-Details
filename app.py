@@ -99,15 +99,24 @@ def get_contest_status(start_date, end_date, today):
     except Exception as e:
         return 'unknown'
 
-# Function to create nice contest cards - IMPROVED
+# Function to create nice contest cards - IMPROVED with Gift and Gift Link
 def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_date_col,
-                       winner_date_col, kam_col, to_whom_col, eligibility_col, status):
+                       winner_date_col, kam_col, to_whom_col, eligibility_col, gift_col, gift_link_col, status):
     """Create a nice looking contest card"""
     camp_name = row[camp_name_col] if camp_name_col and camp_name_col in row and pd.notna(row[camp_name_col]) else 'N/A'
     camp_type = row[camp_type_col] if camp_type_col and camp_type_col in row and pd.notna(row[camp_type_col]) else 'N/A'
     
     # Get contest eligibility
     contest_eligibility = row[eligibility_col] if eligibility_col and eligibility_col in row and pd.notna(row[eligibility_col]) else 'N/A'
+    
+    # Get gift and gift link
+    gift = row[gift_col] if gift_col and gift_col in row and pd.notna(row[gift_col]) else 'N/A'
+    gift_link = row[gift_link_col] if gift_link_col and gift_link_col in row and pd.notna(row[gift_link_col]) else 'N/A'
+    
+    # Format gift link as clickable if it exists
+    gift_display = gift
+    if gift_link != 'N/A' and gift_link and gift_link != '':
+        gift_display = f'<a href="{gift_link}" target="_blank" style="color: white; text-decoration: underline;">{gift}</a>'
    
     # Format start date
     start_date = 'N/A'
@@ -203,7 +212,7 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
         gradient = "linear-gradient(135deg, #9e9e9e 0%, #616161 100%)"  # Grey for past
         badge = "✅ COMPLETED"
    
-    # Create card with contest eligibility
+    # Create card with contest eligibility, gift, and gift link
     card_html = f"""
     <div class="contest-card" style="
         background: {gradient};
@@ -222,10 +231,11 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
             <div>
                 <strong>🎯 Type:</strong> {camp_type}<br>
                 <strong>📋 Eligibility:</strong> {contest_eligibility}<br>
-                <strong>👤 KAM:</strong> {kam}<br>
-                <strong>👥 Team:</strong> {to_whom}
+                <strong>🎁 Gift:</strong> {gift_display}<br>
+                <strong>👤 KAM:</strong> {kam}
             </div>
             <div>
+                <strong>👥 Team:</strong> {to_whom}<br>
                 <strong>📅 Starts:</strong> {start_date}<br>
                 <strong>🏁 Ends:</strong> {end_date}<br>
                 <strong>🏆 Winner Date:</strong> {winner_date}
@@ -647,6 +657,10 @@ if client:
             kam_col = find_column(contests, ['KAM', 'Owner', 'Manager', 'Responsible'])
             to_whom_col = find_column(contests, ['To Whom?', 'To Whom', 'Assigned To', 'Team'])
             eligibility_col = find_column(contests, ['Contest Eligiblity', 'Contest Eligibility', 'Eligibility', 'Contest Eligiblity '])
+            
+            # ADDED: Gift and Gift Link columns
+            gift_col = find_column(contests, ['Gift', 'Prize', 'Reward'])
+            gift_link_col = find_column(contests, ['Gift Link', 'Link', 'URL', 'Gift URL'])
            
             # Fix dates safely - IMPROVED for DD-MM-YYYY format
             if start_date_col:
@@ -811,11 +825,12 @@ if client:
                    
                     st.markdown("---")
                    
-                    # Show running contest cards
+                    # Show running contest cards WITH GIFT AND GIFT LINK
                     for _, row in running_contests.iterrows():
                         card_html = create_contest_card(
                             row, camp_name_col, camp_type_col, start_date_col, end_date_col,
-                            winner_date_col, kam_col, to_whom_col, eligibility_col, status='running'
+                            winner_date_col, kam_col, to_whom_col, eligibility_col, 
+                            gift_col, gift_link_col, status='running'
                         )
                         st.markdown(card_html, unsafe_allow_html=True)
                 else:
@@ -859,11 +874,12 @@ if client:
                         
                         st.markdown("---")
                         
-                        # Show this month's contest cards
+                        # Show this month's contest cards WITH GIFT AND GIFT LINK
                         for _, row in month_contests.iterrows():
                             card_html = create_contest_card(
                                 row, camp_name_col, camp_type_col, start_date_col, end_date_col,
-                                winner_date_col, kam_col, to_whom_col, eligibility_col, status='upcoming'
+                                winner_date_col, kam_col, to_whom_col, eligibility_col,
+                                gift_col, gift_link_col, status='upcoming'
                             )
                             st.markdown(card_html, unsafe_allow_html=True)
                         
@@ -894,6 +910,9 @@ if client:
                                 else:
                                     end_date = str(row[end_date_col])
                             
+                            # ADDED: Show gift in recently ended contests
+                            gift = row[gift_col] if gift_col and gift_col in row and pd.notna(row[gift_col]) else 'N/A'
+                            
                             st.markdown(f"""
                             <div class="recently-ended-card" style="
                                 border-radius: 8px;
@@ -902,6 +921,7 @@ if client:
                             ">
                                 <strong>{camp_name}</strong><br>
                                 <small>Type: {camp_type}</small><br>
+                                <small>Gift: {gift}</small><br>
                                 <small>Ended: {end_date}</small>
                             </div>
                             """, unsafe_allow_html=True)
@@ -959,9 +979,9 @@ if client:
                         key="contest_end_date"
                     )
                
-                # Additional Filters
+                # Additional Filters - ADDED GIFT FILTER
                 st.subheader("🔍 Additional Filters")
-                col1, col2, col3 = st.columns(3)
+                col1, col2, col3, col4 = st.columns(4)
                
                 with col1:
                     # Year filter
@@ -1003,6 +1023,14 @@ if client:
                         selected_type = st.selectbox("Campaign Type", camp_types, index=0, key="contest_type")
                     else:
                         selected_type = "All Types"
+                
+                with col4:
+                    # ADDED: Gift filter
+                    if gift_col and pd.notna(contests[gift_col]).any():
+                        gifts = ["All Gifts"] + sorted(contests[gift_col].dropna().unique().tolist())
+                        selected_gift = st.selectbox("Gift", gifts, index=0, key="contest_gift")
+                    else:
+                        selected_gift = "All Gifts"
                
                 # Apply filters - FIXED DATE FILTERING LOGIC
                 filtered_contests = contests.copy()
@@ -1076,6 +1104,10 @@ if client:
                 # Camp Type filter
                 if selected_type != "All Types" and camp_type_col and camp_type_col in filtered_contests.columns:
                     filtered_contests = filtered_contests[filtered_contests[camp_type_col] == selected_type]
+                
+                # ADDED: Gift filter
+                if selected_gift != "All Gifts" and gift_col and gift_col in filtered_contests.columns:
+                    filtered_contests = filtered_contests[filtered_contests[gift_col] == selected_gift]
                
                 # Display results
                 st.subheader(f"📊 Results: {len(filtered_contests)} contests found")
@@ -1088,7 +1120,7 @@ if client:
                     )
                     
                     # Stats
-                    col1, col2, col3 = st.columns(3)
+                    col1, col2, col3, col4 = st.columns(4)
                     with col1:
                         st.metric("Total Contests", len(filtered_contests))
                     with col2:
@@ -1097,6 +1129,11 @@ if client:
                     with col3:
                         upcoming_count = len(filtered_contests[filtered_contests['Status'] == 'upcoming'])
                         st.metric("Upcoming", upcoming_count)
+                    with col4:
+                        # ADDED: Unique gifts count
+                        if gift_col and gift_col in filtered_contests.columns:
+                            unique_gifts = filtered_contests[gift_col].nunique()
+                            st.metric("Unique Gifts", unique_gifts)
                    
                     # Show as cards or table based on toggle
                     view_mode = st.radio("View Mode:", ["Cards View", "Table View"], horizontal=True, key="contest_view")
@@ -1106,15 +1143,18 @@ if client:
                         for _, row in filtered_contests.iterrows():
                             card_html = create_contest_card(
                                 row, camp_name_col, camp_type_col, start_date_col, end_date_col,
-                                winner_date_col, kam_col, to_whom_col, eligibility_col, status=row['Status']
+                                winner_date_col, kam_col, to_whom_col, eligibility_col,
+                                gift_col, gift_link_col, status=row['Status']
                             )
                             st.markdown(card_html, unsafe_allow_html=True)
                     else:
-                        # Table view
+                        # Table view - ADDED GIFT AND GIFT LINK COLUMNS
                         display_cols = []
                         if camp_name_col: display_cols.append(camp_name_col)
                         if camp_type_col: display_cols.append(camp_type_col)
                         if eligibility_col: display_cols.append(eligibility_col)
+                        if gift_col: display_cols.append(gift_col)  # ADDED
+                        if gift_link_col: display_cols.append(gift_link_col)  # ADDED
                         if start_date_col: display_cols.append(start_date_col)
                         if end_date_col: display_cols.append(end_date_col)
                         if winner_date_col: display_cols.append(winner_date_col)
