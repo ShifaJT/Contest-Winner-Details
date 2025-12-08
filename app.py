@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, date, timedelta
 import gspread
 from google.oauth2.service_account import Credentials
+import hashlib
 
 # Simple connection
 def connect_sheets():
@@ -99,10 +100,10 @@ def get_contest_status(start_date, end_date, today):
     except Exception as e:
         return 'unknown'
 
-# Function to create nice contest cards - IMPROVED with Gift, Gift Link, and Banner Link
+# Function to create nice contest cards - IMPROVED with Gift, Gift Link, and Banner Preview
 def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_date_col,
                        winner_date_col, kam_col, to_whom_col, eligibility_col, gift_col, gift_link_col, banner_link_col, status):
-    """Create a nice looking contest card with banner link"""
+    """Create a nice looking contest card with banner preview"""
     camp_name = row[camp_name_col] if camp_name_col and camp_name_col in row and pd.notna(row[camp_name_col]) else 'N/A'
     camp_type = row[camp_type_col] if camp_type_col and camp_type_col in row and pd.notna(row[camp_type_col]) else 'N/A'
     
@@ -121,10 +122,183 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
     if gift_link != 'N/A' and gift_link and gift_link != '':
         gift_display = f'<a href="{gift_link}" target="_blank" style="color: white; text-decoration: underline;">{gift}</a>'
     
-    # Format camp name as clickable if banner link exists
+    # Format camp name
     camp_name_display = camp_name
+    banner_preview_html = ""
+    
     if banner_link and banner_link != 'N/A' and banner_link != '':
-        camp_name_display = f'<a href="{banner_link}" target="_blank" style="color: white; text-decoration: underline;">{camp_name} 🔗</a>'
+        # Create a unique ID for modal
+        banner_hash = hashlib.md5(str(banner_link).encode()).hexdigest()[:8]
+        modal_id = f"banner_modal_{banner_hash}"
+        
+        # Create banner preview with modal
+        banner_preview_html = f"""
+        <div style="margin-top: 10px; margin-bottom: 15px;">
+            <div style="
+                background: rgba(255,255,255,0.1);
+                border-radius: 8px;
+                padding: 10px;
+                border: 1px solid rgba(255,255,255,0.2);
+            ">
+                <div style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-bottom: 5px;
+                ">
+                    <small style="color: rgba(255,255,255,0.8);">🎨 Banner Preview:</small>
+                    <button onclick="document.getElementById('{modal_id}').style.display='block'" 
+                            style="
+                                background: rgba(255,255,255,0.2);
+                                color: white;
+                                border: none;
+                                padding: 3px 10px;
+                                border-radius: 4px;
+                                font-size: 11px;
+                                cursor: pointer;
+                                text-decoration: underline;
+                            ">
+                        🔍 View Full Image
+                    </button>
+                </div>
+                <div style="
+                    width: 100%;
+                    height: 80px;
+                    border-radius: 6px;
+                    overflow: hidden;
+                    background: rgba(0,0,0,0.2);
+                    cursor: pointer;
+                    position: relative;
+                " onclick="document.getElementById('{modal_id}').style.display='block'">
+                    <img src="{banner_link}" 
+                         alt="Banner Preview" 
+                         style="
+                            width: 100%;
+                            height: 100%;
+                            object-fit: contain;
+                            background: rgba(0,0,0,0.1);
+                         "
+                         onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'display: flex; align-items: center; justify-content: center; height: 100%; color: rgba(255,255,255,0.6);\\'>🎨 Image not available</div>';">
+                    <div style="
+                        position: absolute;
+                        bottom: 0;
+                        left: 0;
+                        right: 0;
+                        background: rgba(0,0,0,0.7);
+                        color: white;
+                        font-size: 10px;
+                        padding: 2px 5px;
+                        text-align: center;
+                    ">
+                        Click to view full image
+                    </div>
+                </div>
+                <div style="margin-top: 5px; font-size: 10px; color: rgba(255,255,255,0.7); text-align: center;">
+                    <a href="{banner_link}" target="_blank" style="color: rgba(255,255,255,0.8); text-decoration: underline; margin-right: 10px;">
+                        📥 Download Image
+                    </a>
+                    <span onclick="navigator.clipboard.writeText('{banner_link}'); alert('Link copied to clipboard!');" 
+                          style="cursor: pointer; color: rgba(255,255,255,0.8); text-decoration: underline;">
+                        📋 Copy Link
+                    </span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Modal for full image view -->
+        <div id="{modal_id}" style="
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.9);
+            padding: 20px;
+            box-sizing: border-box;
+        ">
+            <div style="
+                position: relative;
+                width: 100%;
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+            ">
+                <button onclick="document.getElementById('{modal_id}').style.display='none'" 
+                        style="
+                            position: absolute;
+                            top: 20px;
+                            right: 30px;
+                            background: #ff4444;
+                            color: white;
+                            border: none;
+                            padding: 10px 15px;
+                            border-radius: 5px;
+                            font-size: 16px;
+                            cursor: pointer;
+                            z-index: 1001;
+                        ">
+                    ✕ Close
+                </button>
+                
+                <div style="
+                    max-width: 90%;
+                    max-height: 80%;
+                    overflow: auto;
+                    text-align: center;
+                ">
+                    <img src="{banner_link}" 
+                         alt="Banner Full View" 
+                         style="
+                            max-width: 100%;
+                            max-height: 100%;
+                            object-fit: contain;
+                            border-radius: 8px;
+                         "
+                         onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'color: white; padding: 40px; text-align: center;\\'><h3>Image not available</h3><p>The image could not be loaded.</p><a href=\\'{banner_link}\\' target=\\'_blank\\' style=\\"color: #4CAF50; text-decoration: underline;\\">Try downloading directly</a></div>';">
+                </div>
+                
+                <div style="
+                    margin-top: 20px;
+                    color: white;
+                    text-align: center;
+                    max-width: 80%;
+                ">
+                    <div style="margin-bottom: 10px;">
+                        <a href="{banner_link}" 
+                           target="_blank" 
+                           style="
+                                background: #4CAF50;
+                                color: white;
+                                padding: 8px 20px;
+                                border-radius: 5px;
+                                text-decoration: none;
+                                margin-right: 10px;
+                           ">
+                            📥 Download Image
+                        </a>
+                        <button onclick="navigator.clipboard.writeText('{banner_link}'); alert('Link copied to clipboard!');"
+                                style="
+                                    background: #2196F3;
+                                    color: white;
+                                    border: none;
+                                    padding: 8px 20px;
+                                    border-radius: 5px;
+                                    cursor: pointer;
+                                ">
+                            📋 Copy Link
+                        </button>
+                    </div>
+                    <div style="font-size: 12px; color: #aaa; margin-top: 10px; word-break: break-all;">
+                        {banner_link}
+                    </div>
+                </div>
+            </div>
+        </div>
+        """
    
     # Format start date
     start_date = 'N/A'
@@ -220,7 +394,7 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
         gradient = "linear-gradient(135deg, #9e9e9e 0%, #616161 100%)"  # Grey for past
         badge = "✅ COMPLETED"
    
-    # Create card with contest eligibility, gift, gift link, and banner link
+    # Create card with contest eligibility, gift, gift link, and banner preview
     card_html = f"""
     <div class="contest-card" style="
         background: {gradient};
@@ -235,6 +409,9 @@ def create_contest_card(row, camp_name_col, camp_type_col, start_date_col, end_d
             {badge}
         </div>
         <h3 style="margin: 0 0 10px 0; color: white; padding-right: 80px;">{camp_name_display}</h3>
+        
+        {banner_preview_html}
+        
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <div>
                 <strong>🎯 Type:</strong> {camp_type}<br>
@@ -846,7 +1023,7 @@ if client:
                    
                     st.markdown("---")
                    
-                    # Show running contest cards WITH BANNER LINK
+                    # Show running contest cards WITH BANNER PREVIEW
                     for _, row in running_contests.iterrows():
                         card_html = create_contest_card(
                             row, camp_name_col, camp_type_col, start_date_col, end_date_col,
@@ -895,7 +1072,7 @@ if client:
                         
                         st.markdown("---")
                         
-                        # Show this month's contest cards WITH BANNER LINK
+                        # Show this month's contest cards WITH BANNER PREVIEW
                         for _, row in month_contests.iterrows():
                             card_html = create_contest_card(
                                 row, camp_name_col, camp_type_col, start_date_col, end_date_col,
@@ -934,11 +1111,45 @@ if client:
                             # ADDED: Show gift in recently ended contests
                             gift = row[gift_col] if gift_col and gift_col in row and pd.notna(row[gift_col]) else 'N/A'
                             
-                            # ADDED: Make camp name clickable if banner link exists
-                            camp_name_display = camp_name
+                            # ADDED: Simple banner preview for recently ended contests
+                            banner_preview_simple = ""
                             if banner_link_col and banner_link_col in row and pd.notna(row[banner_link_col]) and row[banner_link_col] not in ['', 'N/A']:
                                 banner_link = row[banner_link_col]
-                                camp_name_display = f'<a href="{banner_link}" target="_blank" style="color: inherit; text-decoration: underline;">{camp_name} 🔗</a>'
+                                banner_preview_simple = f"""
+                                <div style="
+                                    width: 100%;
+                                    height: 40px;
+                                    border-radius: 4px;
+                                    overflow: hidden;
+                                    margin: 5px 0;
+                                    background: rgba(0,0,0,0.1);
+                                    position: relative;
+                                ">
+                                    <img src="{banner_link}" 
+                                         alt="Banner" 
+                                         style="
+                                            width: 100%;
+                                            height: 100%;
+                                            object-fit: cover;
+                                         "
+                                         onerror="this.style.display='none';">
+                                    <div style="
+                                        position: absolute;
+                                        bottom: 0;
+                                        left: 0;
+                                        right: 0;
+                                        background: rgba(0,0,0,0.7);
+                                        color: white;
+                                        font-size: 8px;
+                                        padding: 1px 3px;
+                                        text-align: center;
+                                    ">
+                                        <a href="{banner_link}" target="_blank" style="color: white; text-decoration: underline;">
+                                            View Banner
+                                        </a>
+                                    </div>
+                                </div>
+                                """
                             
                             st.markdown(f"""
                             <div class="recently-ended-card" style="
@@ -946,7 +1157,8 @@ if client:
                                 padding: 15px;
                                 margin: 5px 0;
                             ">
-                                <strong>{camp_name_display}</strong><br>
+                                {banner_preview_simple}
+                                <strong>{camp_name}</strong><br>
                                 <small>Type: {camp_type}</small><br>
                                 <small>Gift: {gift}</small><br>
                                 <small>Ended: {end_date}</small>
