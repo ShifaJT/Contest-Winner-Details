@@ -698,16 +698,33 @@ if client:
             if winner_date_col:
                 contests[winner_date_col] = safe_to_datetime(contests[winner_date_col])
        
-        # Process winner data - IMPROVED
+        # Process winner data - FIXED FOR YOUR SPECIFIC HEADERS
         if not winners.empty:
-            # Fix dates in winner data safely
-            date_cols = ['Start Date', 'End Date', 'Winner Announcement Date']
+            # 1. Fix dates in winner data (Using your specific headers)
+            # Your sheet has: 'Old Lucky winner - Date', 'Start Date', 'End Date'
+            date_cols = ['Start Date', 'End Date', 'Old Lucky winner - Date', 'Winner Announcement Date']
             for col in date_cols:
                 if col in winners.columns:
                     winners[col] = safe_to_datetime(winners[col])
-           
-            # Find Gift Status column (handle different possible names)
-            gift_status_col = find_column(winners, ['Gift Status', 'GiftStatus', 'Status', 'Delivery Status', 'Gift_Status'])
+            
+            # 2. Find Gift Status column (Using your specific headers)
+            # Your sheet has: 'Gift Received by Customer on' (This is the status)
+            gift_status_col = find_column(winners, [
+                'Gift Received by Customer on', 
+                'Gift Status', 
+                'Delivery Status', 
+                'Status'
+            ])
+            
+            # 3. Map your specific column names to the variables the app expects
+            # The app looks for 'customer_firstname', but your sheet has 'business_displayname'
+            if 'customer_firstname' not in winners.columns and 'business_displayname' in winners.columns:
+                winners['customer_firstname'] = winners['business_displayname']
+            
+            # The app looks for 'Contest', but your sheet has 'Camp Description' or 'Contest'
+            # (Your sheet actually has a column named 'Contest', so this works, but let's be safe)
+            if 'Contest' not in winners.columns and 'Camp Description' in winners.columns:
+                winners['Contest'] = winners['Camp Description']
        
         today = datetime.now().date()
         current_month = today.month
@@ -1426,7 +1443,7 @@ if client:
                                             # Get dates from winner data
                                             start_date_val = row.get('Start Date', None)
                                             end_date_val = row.get('End Date', None)
-                                            winner_date_val = row.get('Winner Announcement Date', None)
+                                            winner_date_val = row.get('Old Lucky winner - Date', row.get('Winner Announcement Date', None))
                                            
                                             # Format dates
                                             start_date_str = 'N/A'
@@ -1529,7 +1546,7 @@ if client:
                         'Camp Description', 'Contest', 'Gift', 'Start Date', 'End Date',
                         'businessid', 'customer_customerid', 'customer_phonenumber',
                         'customer_firstname', 'business_displayname', 'address_addresslocality',
-                        'Winner Announcement Date'
+                        'Old Lucky winner - Date', 'Winner Announcement Date'
                     ]
                    
                     # Add Gift Status column if available
@@ -1541,7 +1558,7 @@ if client:
                     download_df = filtered_winners[available_cols].copy()
                    
                     # Format dates for download
-                    for date_col in ['Start Date', 'End Date', 'Winner Announcement Date']:
+                    for date_col in ['Start Date', 'End Date', 'Old Lucky winner - Date', 'Winner Announcement Date']:
                         if date_col in download_df.columns:
                             download_df[date_col] = download_df[date_col].apply(
                                 lambda x: x.strftime('%d-%m-%Y') if pd.notna(x) and hasattr(x, 'strftime') else str(x)
